@@ -10,6 +10,7 @@ entities:
   store:
     patterns:
       - "test-fixtures/src/store/**/*.ts"
+      - "test-fixtures/src/store/**/*.js"
 
   route:
     patterns:
@@ -24,6 +25,14 @@ framework_apis:
       - "computed"
       - "watch"
       - "onMounted"
+  - name: "vuex"
+    sources:
+      - "vuex"
+    api_list:
+      - "mapState"
+      - "mapMutations"
+      - "mapActions"
+      - "mapGetters"
 
 relationships:
   imports:
@@ -32,12 +41,22 @@ relationships:
     to: "store"
 
   uses_store:
-    description: "Component uses a store"
+    description: "Component uses a store (Pinia or Vuex)"
     from: "component"
     to: "store"
     detect_by:
       - type: "call_expression"
         pattern: "use*Store"
+      - type: "call_expression"
+        pattern: "mapState"
+      - type: "call_expression"
+        pattern: "mapMutations"
+      - type: "call_expression"
+        pattern: "mapActions"
+      - type: "call_expression"
+        pattern: "mapGetters"
+      - type: "member_expression"
+        pattern: "$store.*"
 
   matches_route:
     description: "Route maps to component"

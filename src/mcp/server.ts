@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import * as z from 'zod';
+import { dirname } from 'node:path';
 import { LbugGraph } from '../graph/lbug.js';
 import { loadConfig, resolveSourceRoot } from '../config/loader.js';
 import {
@@ -8,6 +9,9 @@ import {
   impactAnalysis,
   cypher,
   projectOverview,
+  routeMap,
+  traceUsage,
+  findEntrypoints,
 } from './tools.js';
 import type { ToolContext } from './tools.js';
 
@@ -16,10 +20,8 @@ export async function startMCPServer(
   dbPath: string,
 ): Promise<void> {
   const config = loadConfig(configPath);
-  const sourceRoot = resolveSourceRoot(
-    config,
-    configPath.replace(/\/[^/]+$/, '') || process.cwd(),
-  );
+  const configDir = dirname(configPath) || process.cwd();
+  const sourceRoot = resolveSourceRoot(config, configDir);
 
   const graph = new LbugGraph(dbPath);
 
@@ -30,15 +32,16 @@ export async function startMCPServer(
     version: '0.1.0',
   });
 
+  // === entity_context ===
   server.registerTool(
     'entity_context',
     {
       description:
-        'Get the full context of a code entity: its type, properties, and all incoming/outgoing relationships.',
+        'Get the full Vue-aware context of a code entity: its type (component/store/route/composable), properties (API mode, store variant, framework usage), store internals (state/getters/actions/mutations), and all incoming/outgoing relationships with evidence.',
       inputSchema: z.object({
         filePath: z
           .string()
-          .describe('The file path of the entity (absolute or relative)'),
+          .describe('The file path of the entity (absolute or relative to current working directory)'),
       }),
     },
     async ({ filePath }) => {
@@ -47,19 +50,20 @@ export async function startMCPServer(
     },
   );
 
+  // === impact_analysis ===
   server.registerTool(
     'impact_analysis',
     {
       description:
-        'Analyze the blast radius of a change: starting from an entity, traverse the graph to find all impacted entities.',
+        'Analyze the blast radius of a change. Starting from a file, BFS-traverse outgoing relations to find all directly and transitively impacted entities. Answers: "If I change this file, what else might break?"',
       inputSchema: z.object({
         filePath: z
           .string()
-          .describe('The file path of the entity to analyze'),
+          .describe('The file path of the entity to analyze as the epicenter of change'),
         depth: z
           .number()
           .optional()
-          .describe('Maximum traversal depth (default: 3, max: 5)'),
+          .describe('Maximum BFS traversal depth (default: 3, max: 5)'),
       }),
     },
     async ({ filePath, depth }) => {
@@ -68,13 +72,65 @@ export async function startMCPServer(
     },
   );
 
+  // === route_map ===
+  server.registerTool(
+    'route_map',
+    {
+      description:
+        'Map Vue Router route definitions to their target page components. Shows route paths, names, and which component/lazy-import they resolve to. Optionally filter by route pattern.',
+      inputSchema: z.object({
+        routePattern: z
+          .string()
+          .optional()
+          .describe('Optional filter: route path pattern, component name, or route file name to search for'),
+      }),
+    },
+    async ({ routePattern }) => {
+      const result = await routeMap(ctx, { routePattern });
+      return { content: [{ type: 'text', text: result }] };
+    },
+  );
+
+  // === trace_usage ===
+  server.registerTool(
+    'trace_usage',
+    {
+      description:
+        'Trace where a named symbol (store item, composable function, framework API) is used across the project. Searches StoreItem table and entity properties for references, with evidence of HOW each reference was detected (import, call, composable usage, etc.)',
+      inputSchema: z.object({
+        symbolName: z
+          .string()
+          .describe('The symbol name to trace, e.g. "userState", "useAuth", "mapState", "defineStore"'),
+      }),
+    },
+    async ({ symbolName }) => {
+      const result = await traceUsage(ctx, { symbolName });
+      return { content: [{ type: 'text', text: result }] };
+    },
+  );
+
+  // === find_entrypoints ===
+  server.registerTool(
+    'find_entrypoints',
+    {
+      description:
+        'Find all project entry points: route definitions (with paths and target components), page-level components (in views/ or pages/), and extracted framework info from package.json (Vue version, Pinia/Vuex presence, UI framework, etc.)',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const result = await findEntrypoints(ctx);
+      return { content: [{ type: 'text', text: result }] };
+    },
+  );
+
+  // === cypher (debug) ===
   server.registerTool(
     'cypher',
     {
       description:
-        'Execute a raw Cypher query against the code knowledge graph.',
+        'Execute a raw Cypher query against the code knowledge graph. Use this for debugging or custom graph traversals not covered by the specialized tools.',
       inputSchema: z.object({
-        query: z.string().describe('The Cypher query to execute'),
+        query: z.string().describe('The Cypher query to execute against LadybugDB'),
       }),
     },
     async ({ query }) => {
@@ -83,11 +139,12 @@ export async function startMCPServer(
     },
   );
 
+  // === project_overview ===
   server.registerTool(
     'project_overview',
     {
       description:
-        'Get an overview of the indexed project: entity counts, relationship counts, and framework API configuration.',
+        'Get a comprehensive project overview: entity counts by type, relationship counts by type, store internals breakdown, framework API usage stats, and project metadata from package.json.',
       inputSchema: z.object({}),
     },
     async () => {
@@ -99,7 +156,7 @@ export async function startMCPServer(
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error(`[CodeSense] MCP server started`);
+  console.error(`[CodeSense] MCP server started — 7 tools available`);
   console.error(`[CodeSense] Config: ${configPath}`);
   console.error(`[CodeSense] Graph DB: ${dbPath}`);
   console.error(`[CodeSense] Source root: ${sourceRoot}`);

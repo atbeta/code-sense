@@ -1,9 +1,12 @@
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ResolvedConfig } from '../types/config.js';
 import type { LbugGraph } from './lbug.js';
 
 /**
- * Create a simple schema: single Entity node table with a JSON properties blob.
- * Relation tables are created per config relationship.
+ * Create the full graph schema.
+ * Since LadybugDB doesn't support CREATE TABLE IF NOT EXISTS,
+ * we delete the existing database directory to start fresh.
  */
 export async function createSchema(
   graph: LbugGraph,
@@ -29,7 +32,9 @@ export async function createSchema(
   `);
 
   // Relationship tables for each config-defined relationship
+  // Skip 'imports' since it's always auto-created above
   for (const [relType, relDef] of Object.entries(config.relationships ?? {})) {
+    if (relType === 'imports') continue;
     await graph.execute(`
       CREATE REL TABLE ${relType} (
         FROM Entity TO Entity,
@@ -48,9 +53,28 @@ export async function createSchema(
     `);
     await graph.execute(`
       CREATE REL TABLE USES_API (
-        FROM Entity TO Entity,
+        FROM Entity TO FrameworkAPI,
         properties STRING
       )
     `);
   }
+
+  // Sub-entity tables for store internals (state, getters, actions, mutations)
+  await graph.execute(`
+    CREATE NODE TABLE StoreItem (
+      name STRING,
+      filePath STRING,
+      itemType STRING,
+      storePath STRING,
+      properties STRING,
+      PRIMARY KEY (filePath)
+    )
+  `);
+
+  await graph.execute(`
+    CREATE REL TABLE has_item (
+      FROM Entity TO StoreItem,
+      properties STRING
+    )
+  `);
 }

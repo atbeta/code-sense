@@ -1,0 +1,50 @@
+project:
+  name: "test-fixture"
+  source_root: "test-fixtures/src"
+
+entities:
+  component:
+    patterns:
+      - "**/*.vue"
+
+  store:
+    patterns:
+      - "test-fixtures/src/store/**/*.ts"
+
+  route:
+    patterns:
+      - "test-fixtures/src/router/**/*.ts"
+
+framework_apis:
+  - name: "vue"
+    sources:
+      - "vue"
+    api_list:
+      - "ref"
+      - "computed"
+      - "watch"
+      - "onMounted"
+
+relationships:
+  imports:
+    description: "File-level import dependency"
+    from: "component"
+    to: "store"
+
+  uses_store:
+    description: "Component uses a store"
+    from: "component"
+    to: "store"
+    detect_by:
+      - type: "call_expression"
+        pattern: "use*Store"
+
+  matches_route:
+    description: "Route maps to component"
+    from: "route"
+    to: "component"
+    detect_by:
+      - type: "import_expression"
+        pattern: "*"
+
+custom_entities: {}

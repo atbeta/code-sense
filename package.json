@@ -1,0 +1,37 @@
+{
+  "name": "code-sense",
+  "version": "0.1.0",
+  "description": "A config-driven code knowledge graph engine for Vue projects, powered by tree-sitter + LadybugDB + MCP + Sigma.js",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "codesense": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "index": "node dist/index.js index",
+    "serve": "node dist/index.js serve",
+    "view": "node dist/index.js view"
+  },
+  "dependencies": {
+    "@ladybugdb/core": "^0.16.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "commander": "^12.0.0",
+    "fast-glob": "^3.3.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "graphology-layout-force": "^0.2.4",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "sigma": "^3.0.3",
+    "tree-sitter-wasms": "^0.1.0",
+    "web-tree-sitter": "^0.24.0",
+    "yaml": "^2.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

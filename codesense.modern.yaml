@@ -1,0 +1,106 @@
+# CodeSense — Pure Vue 3 新项目配置
+#
+# 适用于: Vue 3 + pinia + vue-router + <script setup>
+#
+# 用法: codesense index -c codesense.modern.yaml
+
+project:
+  name: "modern-app"
+  source_root: "src"
+
+entities:
+  component:
+    patterns:
+      - "**/*.vue"
+    properties:
+      - name: "name"
+        extract: "export_default.name"
+      - name: "api_mode"
+        extract: "detect_api_mode"
+
+  composable:
+    description: "Vue 3 composable (组合式函数)"
+    patterns:
+      - "src/composables/**/*.ts"
+    markers:
+      - naming_pattern: "use[A-Z]*"
+
+  store:
+    patterns:
+      - "src/stores/**/*.ts"
+    variants:
+      pinia:
+        detector: call_expression
+        pattern: "defineStore"
+        internal_structure:
+          state: "options.state"
+          getters: "options.getters"
+          actions: "options.actions"
+
+  route:
+    patterns:
+      - "src/router/**/*.ts"
+
+framework_apis:
+  - name: "vue"
+    sources:
+      - "vue"
+    api_list:
+      - "ref"
+      - "computed"
+      - "watch"
+      - "onMounted"
+      - "onUnmounted"
+      - "reactive"
+      - "toRefs"
+      - "nextTick"
+      - "watchEffect"
+      - "provide"
+      - "inject"
+    compiler_macros:
+      - "defineProps"
+      - "defineEmits"
+      - "defineExpose"
+      - "defineOptions"
+      - "withDefaults"
+      - "defineModel"
+      - "defineSlots"
+
+relationships:
+  imports:
+    description: "File-level import dependency"
+    from: "component"
+    to: "store"
+
+  uses_store:
+    description: "Component uses a pinia store"
+    from: "component"
+    to: "store"
+    detect_by:
+      - type: "call_expression"
+        pattern: "use*Store"
+
+  uses_composable:
+    description: "Component uses a composable"
+    from: "component"
+    to: "composable"
+    detect_by:
+      - type: "call_expression"
+        pattern: "use*"
+
+  matches_route:
+    description: "Route maps to component"
+    from: "route"
+    to: "component"
+    detect_by:
+      - type: "import_expression"
+        pattern: "*"
+
+custom_entities:
+  server_api_composable:
+    description: "Composable 封装了服务端 API 调用"
+    patterns:
+      - "src/composables/api/**/*.ts"
+    markers:
+      - import_contains: "axios"
+      - import_contains: "ofetch"

@@ -235,25 +235,25 @@ var EDGE_COLORS = {
 };
 
 var EDGE_WIDTH = {
-  imports: 0.5,
-  USES_API: 0.7,
-  uses_store: 1.0,
-  uses_composable: 0.8,
-  matches_route: 1.0,
-  has_state: 0.6,
-  has_getter: 0.6,
-  has_action: 0.6,
-  has_mutation: 0.6,
-  belongs_to: 0.4,
+  imports: 0.25,
+  USES_API: 0.35,
+  uses_store: 0.5,
+  uses_composable: 0.4,
+  matches_route: 0.5,
+  has_state: 0.3,
+  has_getter: 0.3,
+  has_action: 0.3,
+  has_mutation: 0.3,
+  belongs_to: 0.2,
 };
 
 var NODE_SIZES = {
-  component: 9,
-  store: 8,
-  route: 7,
-  composable: 6,
-  legacy_module: 9,
-  chart_component: 8,
+  component: 4,
+  store: 3.5,
+  route: 3,
+  composable: 3,
+  legacy_module: 4,
+  chart_component: 3.5,
 };
 
 // ===== GLOBAL STATE =====
@@ -704,13 +704,13 @@ function applyNodeHighlight() {
     if (hasSelection) {
       graph.setNodeAttribute(node, 'hidden', !isSelected && !isNeighbor && !isHighlighted);
       if (isSelected) {
-        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 2.0);
+        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 3.5);
         graph.setNodeAttribute(node, 'zIndex', 100);
       } else if (isNeighbor) {
-        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 1.5);
+        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 2.0);
         graph.setNodeAttribute(node, 'zIndex', 50);
       } else if (isHighlighted) {
-        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 1.7);
+        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 2.5);
         graph.setNodeAttribute(node, 'zIndex', 75);
       }
     } else {
@@ -726,7 +726,7 @@ function applyNodeHighlight() {
         (highlightedNodes.has(src) || highlightedNodes.has(tgt));
       if (connected) {
         graph.setEdgeAttribute(edge, 'hidden', false);
-        graph.setEdgeAttribute(edge, 'size', edgeWidth(attrs._relType) * 4);
+        graph.setEdgeAttribute(edge, 'size', edgeWidth(attrs._relType) * 2);
         graph.setEdgeAttribute(edge, 'zIndex', 25);
       } else {
         graph.setEdgeAttribute(edge, 'hidden', true);
@@ -786,9 +786,9 @@ function startPulseAnimation() {
           var attrs = graph.getNodeAttributes(nodeId);
           var base = nodeSize(attrs.entityType);
           if (selectedNode === nodeId) {
-            graph.setNodeAttribute(nodeId, 'size', base * 2.0);
+            graph.setNodeAttribute(nodeId, 'size', base * 3.5);
           } else if (!selectedNode || graph.neighbors(selectedNode).indexOf(nodeId) < 0) {
-            graph.setNodeAttribute(nodeId, 'size', base * (1.7 * (0.85 + 0.15 * Math.sin(phase))));
+            graph.setNodeAttribute(nodeId, 'size', base * (2.5 * (0.85 + 0.15 * Math.sin(phase))));
           }
         }
       });

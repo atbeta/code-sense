@@ -236,74 +236,9 @@ export async function buildGraph(
     }
   }
 
-  // Build CALLS edges between functions
+  // Build AST-based CALLS edges between functions
   if (functions.length > 0) {
-    const functionNames = new Set(functions.map((f) => f.name));
-    const funcByName = new Map<string, FunctionDef[]>();
-    for (const fn of functions) {
-      const list = funcByName.get(fn.name) ?? [];
-      list.push(fn);
-      funcByName.set(fn.name, list);
-    }
-
-    for (const caller of functions) {
-      const callPattern = /(?:^|[^\w])([\w$]+)\s*\(/g;
-      let match: RegExpExecArray | null;
-      const called: Set<string> = new Set();
-      while ((match = callPattern.exec(caller.content)) !== null) {
-        const calledName = match[1];
-        if (
-          [
-            'if',
-            'switch',
-            'for',
-            'while',
-            'return',
-            'throw',
-            'typeof',
-            'instanceof',
-            'new',
-            'import',
-            'export',
-            'require',
-            'console',
-            'JSON',
-            'Math',
-            'Object',
-            'Array',
-            'String',
-            'Number',
-            'Boolean',
-            'Promise',
-            'Map',
-            'Set',
-            'Ref',
-            'ComputedRef',
-            'parseInt',
-            'parseFloat',
-            'isNaN',
-          ].includes(calledName)
-        )
-          continue;
-        if (!functionNames.has(calledName)) continue;
-        if (calledName === caller.name) continue;
-        called.add(calledName);
-      }
-
-      for (const targetName of called) {
-        const targets = funcByName.get(targetName);
-        if (!targets) continue;
-        for (const target of targets) {
-          try {
-            await graph.execute(
-              `MATCH (a:Function {id: '${escapeStr(caller.id)}'}) MATCH (b:Function {id: '${escapeStr(target.id)}'}) CREATE (a)-[:CALLS {confidence: 0.7, callSite: '${escapeStr(caller.name + '→' + target.name)}'}]->(b)`,
-            );
-          } catch {
-            /* edge may already exist */
-          }
-        }
-      }
-    }
+    await buildASTCallGraph(graph, functions, entities, sourceRoot);
   }
 
   // Plugin post-processing hook
@@ -461,7 +396,209 @@ async function processFile(
   };
 }
 
-// ===== Generic Function Extraction (fallback when no plugin provides) =====
+// ===== AST-based Call Graph =====
+
+async function buildASTCallGraph(
+  graph: LbugGraph,
+  functions: FunctionDef[],
+  entities: EntityInstance[],
+  sourceRoot: string,
+): Promise<void> {
+  // Index functions by name (same-file matches preferred)
+  const funcByName = new Map<string, FunctionDef[]>();
+  for (const fn of functions) {
+    const list = funcByName.get(fn.name) ?? [];
+    list.push(fn);
+    funcByName.set(fn.name, list);
+  }
+
+  // Index functions by id
+  const funcById = new Map<string, FunctionDef>();
+  for (const fn of functions) funcById.set(fn.id, fn);
+
+  // Group functions by file for batch AST parsing
+  const funcsByFile = new Map<string, FunctionDef[]>();
+  for (const fn of functions) {
+    const list = funcsByFile.get(fn.filePath) ?? [];
+    list.push(fn);
+    funcsByFile.set(fn.filePath, list);
+  }
+
+  const seenEdges = new Set<string>();
+
+  for (const [filePath, fileFuncs] of funcsByFile) {
+    // Parse file once
+    let root: SyntaxNode;
+    try {
+      const source = readFileSync(filePath, 'utf-8');
+      const sfc = filePath.endsWith('.vue') ? parseSFC(source, filePath) : null;
+      const code = sfc?.mainScript ? extractScriptContent(sfc.mainScript) : source;
+      const attrs = sfc?.mainScript?.attrs ?? '';
+      const langMatch = attrs.match(/lang=['"]([^'"]+)['"]/);
+      const scriptLang = langMatch ? langMatch[1] : undefined;
+      const lang = detectLanguage(filePath, scriptLang);
+      root = parseSource(code, lang).rootNode;
+    } catch {
+      continue;
+    }
+
+    // Find all function-like AST nodes
+    const astFuncs = collect(root, (n) =>
+      n.type === 'function_declaration' ||
+      n.type === 'arrow_function' ||
+      n.type === 'method_definition' ||
+      (n.type === 'variable_declarator' &&
+        (n.childForFieldName('value')?.type === 'arrow_function' ||
+         n.childForFieldName('value')?.type === 'function')),
+    );
+
+    // For each function in this file, find its AST node by NAME match
+    for (const caller of fileFuncs) {
+      // Find AST node: match by function name
+      let funcNode: SyntaxNode | null = null;
+      for (const astFn of astFuncs) {
+        const name = extractFnName(astFn);
+        if (name === caller.name) {
+          funcNode = astFn;
+          break;
+        }
+      }
+      if (!funcNode) continue;
+
+      // Collect calls within this function body
+      const calls = collect(funcNode, (n) => n.type === 'call_expression');
+
+      for (const call of calls) {
+        const calleeName = extractCalleeName(call);
+        if (!calleeName) continue;
+        if (calleeName === caller.name) continue;
+        if (isBuiltin(calleeName)) continue;
+
+        const targets = funcByName.get(calleeName);
+        if (!targets || targets.length === 0) continue;
+
+        for (const target of targets) {
+          const edgeKey = `${caller.id}||CALLS||${target.id}`;
+          if (seenEdges.has(edgeKey)) continue;
+          seenEdges.add(edgeKey);
+
+          const sameFile = caller.filePath === target.filePath;
+          const confidence = sameFile ? 0.95 : 0.8;
+
+          try {
+            await graph.execute(
+              `MATCH (a:Function {id: '${escapeStr(caller.id)}'}) MATCH (b:Function {id: '${escapeStr(target.id)}'}) CREATE (a)-[:CALLS {confidence: ${confidence}, callSite: '${escapeStr(caller.name + '→' + target.name)}'}]->(b)`,
+            );
+          } catch {
+            /* edge may already exist */
+          }
+        }
+      }
+    }
+  }
+}
+
+function extractFnName(node: SyntaxNode): string | null {
+  if (node.type === 'function_declaration' || node.type === 'method_definition') {
+    return node.childForFieldName('name')?.text ?? null;
+  }
+  if (node.type === 'variable_declarator') {
+    return node.childForFieldName('name')?.text ?? null;
+  }
+  // arrow_function standalone — can't easily get name, skip
+  return null;
+}
+
+function extractCalleeName(node: SyntaxNode): string | null {
+  const funcNode = node.childForFieldName('function');
+  if (!funcNode) return null;
+
+  // Simple identifier: foo()
+  if (funcNode.type === 'identifier') return funcNode.text;
+
+  // Member expression: obj.method() → return method name
+  if (funcNode.type === 'member_expression') {
+    const prop = funcNode.childForFieldName('property');
+    if (prop) return prop.text;
+    // For computed: obj['key']() — skip
+    return null;
+  }
+
+  return null;
+}
+
+function isBuiltin(name: string): boolean {
+  return [
+    'if', 'switch', 'for', 'while', 'return', 'throw', 'typeof', 'instanceof',
+    'new', 'import', 'export', 'require', 'console', 'JSON', 'Math',
+    'Object', 'Array', 'String', 'Number', 'Boolean', 'Promise', 'Map', 'Set',
+    'Ref', 'ComputedRef', 'parseInt', 'parseFloat', 'isNaN',
+    'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
+    'alert', 'confirm', 'prompt', 'fetch',
+    'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+    'encodeURIComponent', 'decodeURIComponent',
+  ].includes(name);
+}
+
+function findFunctionNode(
+  root: SyntaxNode,
+  startLine: number,
+  endLine: number,
+): SyntaxNode | null {
+  // Search for function declaration or arrow function matching the line range
+  const candidates = collect(
+    root,
+    (n) =>
+      n.type === 'function_declaration' ||
+      n.type === 'arrow_function' ||
+      n.type === 'method_definition' ||
+      (n.type === 'variable_declarator' &&
+        (n.childForFieldName('value')?.type === 'arrow_function' ||
+         n.childForFieldName('value')?.type === 'function')),
+  );
+
+  for (const node of candidates) {
+    const nodeStart = node.startPosition.row + 1;
+    const nodeEnd = node.endPosition.row + 1;
+    // Allow ±1 line tolerance for comment/annotation lines
+    if (Math.abs(nodeStart - startLine) <= 1 && Math.abs(nodeEnd - endLine) <= 1) {
+      return node;
+    }
+  }
+
+  // Fallback: search for any function-like node within the line range
+  for (const node of candidates) {
+    const nodeStart = node.startPosition.row + 1;
+    if (nodeStart >= startLine && nodeStart <= endLine) return node;
+  }
+
+  return null;
+}
+
+function buildImportMap(
+  entities: EntityInstance[],
+  sourceRoot: string,
+): Map<string, { name: string; resolvedFile: string }[]> {
+  const result = new Map<string, { name: string; resolvedFile: string }[]>();
+
+  for (const entity of entities) {
+    const imports = entity.properties._imports as ImportInfo[] | undefined;
+    if (!imports || imports.length === 0) continue;
+
+    const resolved: { name: string; resolvedFile: string }[] = [];
+    for (const imp of imports) {
+      const resolvedPath = resolveImportPath(entity.filePath, imp.source, sourceRoot);
+      if (resolvedPath) {
+        for (const name of imp.imports) {
+          resolved.push({ name, resolvedFile: resolvedPath });
+        }
+      }
+    }
+    if (resolved.length > 0) result.set(entity.filePath, resolved);
+  }
+
+  return result;
+}
 
 function extractGenericFunctions(
   root: SyntaxNode,

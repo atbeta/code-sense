@@ -118,8 +118,8 @@ program
     }
 
     const storeDir = existsSync(resolve(srcDir, 'store')) ? 'store' : 'stores';
-    const storePattern = `src/${storeDir}/**/*.{js,ts}`;
-    const routerPattern = `src/router/**/*.{js,ts}`;
+    const storePattern = `${storeDir}/**/*.{js,ts}`;
+    const routerPattern = `router/**/*.{js,ts}`;
 
     const defaultConfig = `# CodeSense configuration — minimal starter
 # Only project.name + entities are required. Everything else is optional.

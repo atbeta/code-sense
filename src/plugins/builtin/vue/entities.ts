@@ -35,7 +35,7 @@ export const VUE_ENTITIES: Record<string, EntityDefinition> = {
   },
 
   store: {
-    patterns: ['stores/**/*.ts', 'stores/**/*.js', 'store/**/*.ts', 'store/**/*.js'],
+    patterns: ['stores/**/*.ts', 'stores/**/*.js', 'store/**/*.ts', 'store/**/*.js', 'vuex/**/*.ts', 'vuex/**/*.js'],
     properties: [
       { name: 'name', extract: 'file_name' },
       { name: 'filePath', extract: 'file_path' },

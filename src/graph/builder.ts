@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, rmSync } from 'node:fs';
 import { basename, extname, resolve, dirname, join } from 'node:path';
 import type { SyntaxNode } from 'web-tree-sitter';
-import type { ResolvedConfig } from '../types/config.js';
+import type { EntityDefinition, ResolvedConfig } from '../types/config.js';
 import type { EntityInstance, RelationInstance } from '../types/graph.js';
 import { scanFiles } from '../engine/file-scanner.js';
 import { parseSFC, extractScriptContent } from '../engine/sfc-parser.js';
@@ -58,9 +58,25 @@ export async function buildGraph(
   const pluginContrib = await registry.activate(sourceRoot);
 
   // Merge plugin contributions into config
+  // For entities: combine patterns from both config and plugin, not replace
+  const mergedEntities: Record<string, EntityDefinition> = {};
+  for (const key of new Set([...Object.keys(config.all_entities), ...Object.keys(pluginContrib.entities)])) {
+    const cfg = config.all_entities[key];
+    const plg = pluginContrib.entities[key];
+    if (cfg && plg) {
+      mergedEntities[key] = {
+        ...plg,
+        ...cfg,
+        patterns: [...new Set([...cfg.patterns, ...plg.patterns])],
+        markers: [...(cfg.markers || []), ...(plg.markers || [])],
+      };
+    } else {
+      mergedEntities[key] = cfg ?? plg;
+    }
+  }
   const mergedConfig: ResolvedConfig = {
     ...config,
-    all_entities: { ...config.all_entities, ...pluginContrib.entities },
+    all_entities: mergedEntities,
     framework_apis: [...(config.framework_apis ?? []), ...pluginContrib.frameworkAPIs],
     relationships: { ...(config.relationships ?? {}), ...pluginContrib.relationships },
   };

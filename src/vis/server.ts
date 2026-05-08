@@ -1,13 +1,30 @@
 /* eslint-disable no-useless-escape */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LbugGraph } from '../graph/lbug.js';
 import { graphToVis } from './adapter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveModuleFile(modulePath: string): string {
+  // package root = dist/vis/../.. = @code-sense/core/
+  const pkgRoot = path.resolve(__dirname, '..', '..');
+  const candidates = [
+    // Package-local node_modules (npm install)
+    path.resolve(pkgRoot, 'node_modules', modulePath),
+    // Hoisted to parent (npx cache)
+    path.resolve(pkgRoot, '..', '..', modulePath),
+    // User's project node_modules (global install)
+    path.resolve(process.cwd(), 'node_modules', modulePath),
+  ];
+  for (const p of candidates) {
+    try { statSync(p); return p; } catch { /* not found */ }
+  }
+  return candidates[0];
+}
 
 const MIME: Record<string, string> = {
   '.js': 'application/javascript',
@@ -1063,11 +1080,8 @@ export function startVisServer(dbPath: string, port: number = 3456): Promise<voi
   return new Promise((resolve) => {
     const graph = new LbugGraph(dbPath);
 
-    const sigmaPath = path.resolve(__dirname, '../../node_modules/sigma/dist/sigma.min.js');
-    const graphologyPath = path.resolve(
-      __dirname,
-      '../../node_modules/graphology/dist/graphology.umd.min.js',
-    );
+    const sigmaPath = resolveModuleFile('sigma/dist/sigma.min.js');
+    const graphologyPath = resolveModuleFile('graphology/dist/graphology.umd.min.js');
 
     const sigmaJS = readFileSync(sigmaPath, 'utf-8');
     const graphologyJS = readFileSync(graphologyPath, 'utf-8');

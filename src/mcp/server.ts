@@ -40,6 +40,51 @@ export async function startMCPServer(
     version: '0.1.0',
   });
 
+  // ── Resources: project metadata visible on connection ──
+
+  server.resource(
+    'project',
+    'code-sense://project',
+    {
+      description: 'Current project metadata — name, source root, entity types, graph stats.',
+    },
+    async () => {
+      const overview = await projectOverview(ctx);
+      return { contents: [{ text: overview, uri: 'code-sense://project' }] };
+    },
+  );
+
+  server.resource(
+    'schema',
+    'code-sense://schema',
+    {
+      description: 'Graph schema — entity types, relationship types, and their descriptions.',
+    },
+    async () => {
+      const entities = Object.entries(ctx.config.all_entities)
+        .map(([name, def]) => `- **${name}**: ${def.description ?? '—'}`);
+      const rels = Object.entries(ctx.config.relationships ?? {})
+        .map(([name, def]) => `- **${name}** (${def.from} → ${def.to}): ${def.description ?? '—'}`);
+      const text = [
+        `# CodeSense Graph Schema`,
+        `Project: ${ctx.config.project.name}`,
+        `Source root: ${ctx.config.project.source_root}`,
+        '',
+        '## Entity Types',
+        ...entities,
+        '',
+        '## Relationships',
+        ...rels,
+        '',
+        `## Framework APIs`,
+        ...(ctx.config.framework_apis ?? []).map(
+          (fw) => `- **${fw.name}**: ${fw.api_list.length} APIs (sources: ${fw.sources.join(', ')})`,
+        ),
+      ].join('\n');
+      return { contents: [{ text, uri: 'code-sense://schema' }] };
+    },
+  );
+
   // === entity_context ===
   server.registerTool(
     'entity_context',

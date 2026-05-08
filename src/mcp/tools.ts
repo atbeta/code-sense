@@ -77,6 +77,19 @@ export async function entityContext(
     }
   }
 
+  // Functions/methods defined in this entity
+  const funcRows = await ctx.graph.query(
+    `MATCH (e:Entity {filePath: '${escapeStr(filePath)}'})-[:defines]->(f:Function) RETURN f.name as name, f.kind as kind, f.startLine as startLine, f.endLine as endLine ORDER BY f.startLine`,
+  );
+  if (funcRows.length > 0) {
+    parts.push('');
+    parts.push('### Functions & Methods');
+    for (const row of funcRows) {
+      const r = row as Record<string, unknown>;
+      parts.push(`- \`${r.name}\` (${r.kind}) :${r.startLine}-${r.endLine}`);
+    }
+  }
+
   // Framework API usage
   const apiRows = await ctx.graph.query(
     `MATCH (n:Entity {filePath: '${escapeStr(filePath)}'})-[r:USES_API]->(fw:FrameworkAPI) RETURN fw.name as name, r.properties as edgeProps`,
@@ -574,6 +587,103 @@ export async function projectOverview(ctx: ToolContext): Promise<string> {
       parts.push(`- APIs detected: ${count}`);
     } catch {
       // ignore
+    }
+  }
+
+  return parts.join('\n');
+}
+
+// ===== function_context =====
+
+export async function functionContext(
+  ctx: ToolContext,
+  params: { name: string; filePath?: string },
+): Promise<string> {
+  const name = params.name;
+  const filePath = params.filePath;
+
+  let query: string;
+  if (filePath) {
+    const resolved = resolve(process.cwd(), filePath);
+    query = `MATCH (f:Function {name: '${escapeStr(name)}'}) WHERE f.filePath = '${escapeStr(resolved)}' RETURN f`;
+  } else {
+    query = `MATCH (f:Function {name: '${escapeStr(name)}'}) RETURN f`;
+  }
+
+  const rows = await ctx.graph.query(query);
+  if (rows.length === 0) {
+    return `No function found named \`${name}\`${filePath ? ' in ' + filePath : ''}.`;
+  }
+
+  // If multiple matches, show summary first then detail for first
+  if (rows.length > 1 && !filePath) {
+    const parts: string[] = [
+      `## Function \`${name}\` (${rows.length} matches)`,
+      '',
+    ];
+    for (const row of rows) {
+      const r = row as Record<string, unknown>;
+      const f = r.f as Record<string, unknown>;
+      const relPath = relative(process.cwd(), (f.filePath as string) || '');
+      parts.push(`- \`${relPath}\` :${f.startLine} (${f.kind})`);
+    }
+    parts.push('');
+    parts.push('Use `filePath` parameter to narrow down.');
+    return parts.join('\n');
+  }
+
+  const f = (rows[0] as Record<string, unknown>).f as Record<string, unknown>;
+  const fnId = f.id as string;
+  const relPath = relative(process.cwd(), (f.filePath as string) || '');
+  const parts: string[] = [
+    `## \`${f.name}\` — Function Context`,
+    `- **Kind**: ${f.kind}`,
+    `- **File**: \`${relPath}\``,
+    `- **Location**: :${f.startLine}–${f.endLine}`,
+    `- **Content**:`,
+    '```ts',
+    (f.content as string) ?? '',
+    '```',
+  ];
+
+  // Callers (incoming CALLS)
+  const callers = await ctx.graph.query(
+    `MATCH (caller:Function)-[r:CALLS]->(f:Function {id: '${escapeStr(fnId)}'}) RETURN caller.name as name, caller.filePath as filePath, caller.kind as kind, caller.startLine as startLine, r.confidence as confidence`,
+  );
+  if (callers.length > 0) {
+    parts.push('');
+    parts.push('### Called By (callers)');
+    for (const row of callers) {
+      const r = row as Record<string, unknown>;
+      const cRel = relative(process.cwd(), (r.filePath as string) || '');
+      parts.push(`- \`${r.name}\` (${r.kind}) in \`${cRel}\` :${r.startLine}`);
+    }
+  }
+
+  // Callees (outgoing CALLS)
+  const callees = await ctx.graph.query(
+    `MATCH (f:Function {id: '${escapeStr(fnId)}'})-[r:CALLS]->(callee:Function) RETURN callee.name as name, callee.filePath as filePath, callee.kind as kind, callee.startLine as startLine`,
+  );
+  if (callees.length > 0) {
+    parts.push('');
+    parts.push('### Calls');
+    for (const row of callees) {
+      const r = row as Record<string, unknown>;
+      const cRel = relative(process.cwd(), (r.filePath as string) || '');
+      parts.push(`- → \`${r.name}\` (${r.kind}) in \`${cRel}\` :${r.startLine}`);
+    }
+  }
+
+  // Sibling functions (same entity)
+  const siblings = await ctx.graph.query(
+    `MATCH (e:Entity)-[:defines]->(f:Function {id: '${escapeStr(fnId)}'}) MATCH (e)-[:defines]->(sibling:Function) WHERE sibling.id <> '${escapeStr(fnId)}' RETURN sibling.name as name, sibling.kind as kind, sibling.startLine as startLine`,
+  );
+  if (siblings.length > 0) {
+    parts.push('');
+    parts.push('### Sibling Functions');
+    for (const row of siblings) {
+      const r = row as Record<string, unknown>;
+      parts.push(`- \`${r.name}\` (${r.kind}) :${r.startLine}`);
     }
   }
 

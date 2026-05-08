@@ -8,6 +8,7 @@ import { parseSFC, extractScriptContent } from '../engine/sfc-parser.js';
 import {
   initParser,
   parseSource,
+  detectLanguage,
   collect,
   isImportStatement,
   isCallExpression,
@@ -17,9 +18,21 @@ import type { DetectorContext } from '../engine/detectors/base.js';
 import { LbugGraph } from './lbug.js';
 import { createSchema } from './schema.js';
 
+export interface FunctionDef {
+  id: string;
+  name: string;
+  filePath: string;
+  entityPath: string;
+  kind: 'function' | 'method' | 'composable_function' | 'setup_function' | 'store_action' | 'store_mutation';
+  startLine: number;
+  endLine: number;
+  content: string;
+}
+
 export interface BuildResult {
   entities: EntityInstance[];
   relations: RelationInstance[];
+  functions: FunctionDef[];
   nodeCount: number;
   edgeCount: number;
 }
@@ -42,6 +55,7 @@ export async function buildGraph(
 
 
   const entities: EntityInstance[] = [];
+  const functions: FunctionDef[] = [];
   const frameworkAPIUsage: { fromFile: string; apiName: string; frameworkName: string }[] = [];
 
   // Collect all framework API names for detection
@@ -61,6 +75,7 @@ export async function buildGraph(
     );
     if (result) {
       entities.push(result.entity);
+      functions.push(...result.functions);
       frameworkAPIUsage.push(...result.apiUsage);
 
       await graph.upsertEntity(
@@ -178,12 +193,72 @@ export async function buildGraph(
     }
   }
 
+  // Write Function nodes
+  for (const fn of functions) {
+    try {
+      await graph.execute(
+        `CREATE (f:Function {id: '${escapeStr(fn.id)}', name: '${escapeStr(fn.name)}', filePath: '${escapeStr(fn.filePath)}', entityPath: '${escapeStr(fn.entityPath)}', kind: '${escapeStr(fn.kind)}', startLine: ${fn.startLine}, endLine: ${fn.endLine}, content: '${escapeStr(fn.content)}'})`,
+      );
+      // Create defines edge: Entity -> Function
+      await graph.execute(
+        `MATCH (e:Entity {filePath: '${escapeStr(fn.entityPath)}'}) MATCH (f:Function {id: '${escapeStr(fn.id)}'}) CREATE (e)-[:defines]->(f)`,
+      );
+    } catch {
+      // may already exist
+    }
+  }
+
+  // Build CALLS edges between functions
+  if (functions.length > 0) {
+    const functionNames = new Set(functions.map((f) => f.name));
+    const funcByName = new Map<string, FunctionDef[]>();
+    for (const fn of functions) {
+      const list = funcByName.get(fn.name) ?? [];
+      list.push(fn);
+      funcByName.set(fn.name, list);
+    }
+
+    let callEdgeCount = 0;
+    for (const caller of functions) {
+      // Extract call expressions from function content
+      const callPattern = /(?:^|[^\w])([\w$]+)\s*\(/g;
+      let match: RegExpExecArray | null;
+      const called: Set<string> = new Set();
+      while ((match = callPattern.exec(caller.content)) !== null) {
+        const calledName = match[1];
+        // Skip common non-function calls
+        if (['if', 'switch', 'for', 'while', 'return', 'throw', 'typeof', 'instanceof', 'new', 'import', 'export', 'require', 'console', 'JSON', 'Math', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Promise', 'Map', 'Set', 'Ref', 'ComputedRef', 'parseInt', 'parseFloat', 'isNaN'].includes(calledName)) continue;
+        if (!functionNames.has(calledName)) continue;
+        if (calledName === caller.name) continue; // skip self-calls for now
+        called.add(calledName);
+      }
+
+      for (const targetName of called) {
+        const targets = funcByName.get(targetName);
+        if (!targets) continue;
+
+        // Create CALLS edge to each target with same name
+        for (const target of targets) {
+          try {
+            await graph.execute(
+              `MATCH (a:Function {id: '${escapeStr(caller.id)}'}) MATCH (b:Function {id: '${escapeStr(target.id)}'}) CREATE (a)-[:CALLS {confidence: 0.7, callSite: '${escapeStr(caller.name + '→' + target.name)}'}]->(b)`,
+            );
+            callEdgeCount++;
+          } catch {
+            // edge may already exist
+          }
+        }
+      }
+    }
+  }
+
   await graph.close();
 
   return {
     entities,
     relations,
-    nodeCount: entities.length,
+    functions,
+    nodeCount: entities.length + functions.length,
     edgeCount: relations.length,
   };
 }
@@ -192,6 +267,7 @@ interface ProcessFileResult {
   entity: EntityInstance;
   apiUsage: { fromFile: string; apiName: string; frameworkName: string }[];
   storeItems: { name: string; filePath: string; type: string; properties: Record<string, unknown> }[];
+  functions: FunctionDef[];
 }
 
 async function processFile(
@@ -205,6 +281,9 @@ async function processFile(
   const apiUsage: { fromFile: string; apiName: string; frameworkName: string }[] = [];
   const storeItems: { name: string; filePath: string; type: string; properties: Record<string, unknown> }[] = [];
 
+  // Detect the source language for parser selection
+  const defaultLang = detectLanguage(filePath);
+
   // Parse source code for AST analysis
   let astRoot: SyntaxNode;
   let sfc: ReturnType<typeof parseSFC> | null = null;
@@ -215,8 +294,9 @@ async function processFile(
     props.usesScriptSetup = sfc.usesScriptSetup;
 
     if (sfc.mainScript) {
+      const scriptLang = sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'") ? 'ts' as const : 'js';
       const scriptContent = extractScriptContent(sfc.mainScript);
-      const tree = parseSource(scriptContent);
+      const tree = parseSource(scriptContent, scriptLang);
       astRoot = tree.rootNode;
 
       props.apiMode = detectApiMode(astRoot);
@@ -262,10 +342,10 @@ async function processFile(
       // Apply entity markers from config
       applyEntityMarkers(props, sfc, entityType, config);
     } else {
-      astRoot = parseSource(source).rootNode;
+      astRoot = parseSource(source, defaultLang).rootNode;
     }
   } else {
-    astRoot = parseSource(source).rootNode;
+    astRoot = parseSource(source, defaultLang).rootNode;
   }
 
   // Extract imports
@@ -400,6 +480,14 @@ async function processFile(
     }
   }
 
+  // Extract function/method definitions
+  const fileFunctions = extractFunctions(
+    astRoot,
+    filePath,
+    entityType,
+    sfc,
+  );
+
   // Route file detection
   if (entityType === 'route') {
     const routeDefs = collect(
@@ -437,6 +525,7 @@ async function processFile(
     },
     apiUsage,
     storeItems,
+    functions: fileFunctions,
   };
 }
 
@@ -456,10 +545,10 @@ function applyEntityMarkers(
     if (marker.uses_options_api !== undefined && sfc) {
       props.usesOptionsAPI = marker.uses_options_api;
       // Check if this is a pure options API component
+      const scriptContent = sfc.mainScript ? extractScriptContent(sfc.mainScript) : '';
+      const scriptLang = sfc.mainScript?.attrs.includes('lang="ts"') || sfc.mainScript?.attrs.includes("lang='ts'") ? 'ts' as const : 'js';
       const isOptions = detectApiMode(
-        parseSource(
-          sfc.mainScript ? extractScriptContent(sfc.mainScript) : '',
-        ).rootNode,
+        parseSource(scriptContent, scriptLang).rootNode,
       ) === 'options';
       if (marker.uses_options_api && isOptions) {
         props.markedAsOptionsAPI = true;
@@ -495,6 +584,193 @@ function detectComposableUsage(
       (n) => n.childForFieldName('function')?.text ?? '',
     );
   }
+}
+
+// ===== Function/Method Extraction =====
+
+function extractFunctions(
+  root: SyntaxNode,
+  filePath: string,
+  entityType: string,
+  sfc: ReturnType<typeof parseSFC> | null,
+): FunctionDef[] {
+  const result: FunctionDef[] = [];
+  const seen = new Set<string>();
+
+  function addFn(
+    name: string,
+    kind: FunctionDef['kind'],
+    startLine: number,
+    endLine: number,
+    node: SyntaxNode,
+  ): void {
+    const id = `${filePath}#${name}:${startLine}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+
+    const content = node.text.length > 300
+      ? node.text.substring(0, 300) + '...'
+      : node.text;
+
+    result.push({
+      id,
+      name,
+      filePath,
+      entityPath: filePath,
+      kind,
+      startLine,
+      endLine,
+      content,
+    });
+  }
+
+  // 1. <script setup> top-level functions and arrow functions
+  // function_declaration: function foo() { ... }
+  const funcDecls = collect(root, (n) => n.type === 'function_declaration');
+  for (const node of funcDecls) {
+    const name = node.childForFieldName('name')?.text;
+    if (!name) continue;
+    // Skip anonymous and internal functions
+    if (name.startsWith('_') && name.length > 1) continue;
+    // Classify: composable functions (useXxx) are special
+    const isComposable = /^use[A-Z]/.test(name);
+    const kind = isComposable ? 'composable_function' :
+      entityType === 'store' ? 'store_action' : 'function';
+    addFn(name, kind, node.startPosition.row + 1, node.endPosition.row + 1, node);
+  }
+
+  // const foo = () => { ... } or const foo = function() { ... }
+  const varDecls = collect(root, (n) => n.type === 'lexical_declaration');
+  for (const decl of varDecls) {
+    for (const child of decl.namedChildren) {
+      if (child.type !== 'variable_declarator') continue;
+      const nameNode = child.childForFieldName('name');
+      const valueNode = child.childForFieldName('value');
+      if (!nameNode || !valueNode) continue;
+      const name = nameNode.text;
+      const isArrow = valueNode.type === 'arrow_function';
+      const isFuncExpr = valueNode.type === 'function';
+      if (!isArrow && !isFuncExpr) continue;
+      if (name.startsWith('_') && name.length > 1) continue;
+
+      // Classify: composable functions (useXxx) are special
+      const isComposable = /^use[A-Z]/.test(name);
+      const kind = isComposable ? 'composable_function' :
+        entityType === 'store' ? 'store_action' : 'function';
+      addFn(name, kind, child.startPosition.row + 1, child.endPosition.row + 1, child);
+    }
+  }
+
+  // 2. Options API methods (inside export default { methods: { ... } })
+  const exportDefaults = collect(
+    root,
+    (n) => n.type === 'export_statement' && n.text.includes('default'),
+  );
+  for (const exp of exportDefaults) {
+    const objects = collect(exp, (n) => n.type === 'object');
+    for (const obj of objects) {
+      // Find methods key
+      for (const pair of obj.namedChildren) {
+        if (pair.type !== 'pair') continue;
+        const key = pair.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
+        if (key !== 'methods') continue;
+        const value = pair.childForFieldName('value');
+        if (!value || value.type !== 'object') continue;
+
+        // Extract method definitions from the methods object
+        for (const methodNode of value.namedChildren) {
+          if (methodNode.type === 'method_definition') {
+            const methodName = methodNode.childForFieldName('name')?.text;
+            if (!methodName) continue;
+            addFn(
+              methodName,
+              'method',
+              methodNode.startPosition.row + 1,
+              methodNode.endPosition.row + 1,
+              methodNode,
+            );
+          } else if (methodNode.type === 'pair') {
+            // foo: function() { ... }
+            const pairKey = methodNode.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
+            const pairValue = methodNode.childForFieldName('value');
+            if (!pairKey || !pairValue) continue;
+            if (pairValue.type === 'function' || pairValue.type === 'arrow_function') {
+              addFn(
+                pairKey,
+                'method',
+                pairValue.startPosition.row + 1,
+                pairValue.endPosition.row + 1,
+                pairValue,
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Store actions/mutations as functions
+  if (entityType === 'store') {
+    const defineStoreCalls = collect(
+      root,
+      (n) =>
+        n.type === 'call_expression' &&
+        n.childForFieldName('function')?.text === 'defineStore',
+    );
+
+    for (const callNode of defineStoreCalls) {
+      const args = callNode.childForFieldName('arguments');
+      if (!args) continue;
+
+      for (const child of args.namedChildren) {
+        if (child.type === 'object') {
+          // Options API store: { state, getters, actions, mutations }
+          for (const pair of child.namedChildren) {
+            if (pair.type !== 'pair') continue;
+            const key = pair.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
+            const val = pair.childForFieldName('value');
+            if (!key || !val || val.type !== 'object') continue;
+
+            const fnKind =
+              key === 'actions' ? 'store_action' as const
+              : key === 'mutations' ? 'store_mutation' as const
+              : null;
+            if (!fnKind) continue;
+
+            // Extract action/mutation functions
+            for (const entry of val.namedChildren) {
+              if (entry.type === 'method_definition') {
+                const nm = entry.childForFieldName('name')?.text;
+                if (!nm) continue;
+                addFn(nm, fnKind, entry.startPosition.row + 1, entry.endPosition.row + 1, entry);
+              } else if (entry.type === 'pair') {
+                const pairKey = entry.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
+                const pairVal = entry.childForFieldName('value');
+                if (!pairKey || !pairVal) continue;
+                if (pairVal.type === 'function' || pairVal.type === 'arrow_function') {
+                  addFn(pairKey, fnKind, pairVal.startPosition.row + 1, pairVal.endPosition.row + 1, pairVal);
+                }
+              }
+            }
+          }
+        } else if (child.type === 'arrow_function' || child.type === 'function') {
+          // Setup store: functions declared inside the setup body
+          const body = child.childForFieldName('body');
+          if (!body) continue;
+
+          // Top-level function declarations in setup body
+          const setupFuncs = collect(body, (n) => n.type === 'function_declaration');
+          for (const fn of setupFuncs) {
+            const nm = fn.childForFieldName('name')?.text;
+            if (!nm || (nm.startsWith('_') && nm.length > 1)) continue;
+            addFn(nm, 'store_action', fn.startPosition.row + 1, fn.endPosition.row + 1, fn);
+          }
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 // ===== Store Internal Structure Extraction =====
@@ -1002,7 +1278,8 @@ async function buildRelationshipEdges(
       let astRoot: SyntaxNode;
       if (sfc?.mainScript) {
         const code = extractScriptContent(sfc.mainScript);
-        astRoot = parseSource(code).rootNode;
+        const scriptLang = sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'") ? 'ts' as const : 'js';
+        astRoot = parseSource(code, scriptLang).rootNode;
       } else {
         astRoot = parseSource(source).rootNode;
       }

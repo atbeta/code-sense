@@ -15,6 +15,7 @@ import {
   routeMap,
   traceUsage,
   findEntrypoints,
+  functionContext,
 } from './tools.js';
 import type { ToolContext } from './tools.js';
 
@@ -127,6 +128,28 @@ export async function startMCPServer(
     },
   );
 
+  // === function_context ===
+  server.registerTool(
+    'function_context',
+    {
+      description:
+        'Get detailed context for a function or method: its kind (function/method/store_action/composable_function), location, content, callers (who calls this), callees (what this calls), and sibling functions in the same entity. Use filePath to disambiguate when multiple functions share the same name.',
+      inputSchema: z.object({
+        name: z
+          .string()
+          .describe('The function/method name to look up, e.g. "handleSubmit", "login", "useAuth"'),
+        filePath: z
+          .string()
+          .optional()
+          .describe('Optional file path to disambiguate functions with the same name across files'),
+      }),
+    },
+    async ({ name, filePath }) => {
+      const result = await functionContext(ctx, { name, filePath });
+      return { content: [{ type: 'text', text: result }] };
+    },
+  );
+
   // === cypher (debug) ===
   server.registerTool(
     'cypher',
@@ -179,7 +202,7 @@ export async function startMCPServer(
     await new Promise<void>((resolve) => {
       app.listen(port, () => {
         console.error(`[CodeSense] MCP server listening on http://localhost:${port}/mcp`);
-        console.error(`[CodeSense] 7 tools available`);
+        console.error(`[CodeSense] 8 tools available`);
         console.error(`[CodeSense] Config: ${configPath}`);
         console.error(`[CodeSense] Graph DB: ${dbPath}`);
         console.error(`[CodeSense] Source root: ${sourceRoot}`);
@@ -191,7 +214,7 @@ export async function startMCPServer(
     const transport = new StdioServerTransport();
     await server.connect(transport);
 
-    console.error(`[CodeSense] MCP server started — 7 tools available`);
+    console.error(`[CodeSense] MCP server started — 8 tools available`);
     console.error(`[CodeSense] Config: ${configPath}`);
     console.error(`[CodeSense] Graph DB: ${dbPath}`);
     console.error(`[CodeSense] Source root: ${sourceRoot}`);

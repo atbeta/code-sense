@@ -4,10 +4,13 @@ import { fileURLToPath } from 'node:url';
 import { statSync } from 'node:fs';
 
 let parserInitialized = false;
+let jsParser: Parser | null = null;
 let tsParser: Parser | null = null;
 
+export type SourceLanguage = 'js' | 'ts';
+
 /**
- * Initialize the web-tree-sitter parser with the JavaScript grammar.
+ * Initialize the web-tree-sitter parser with JavaScript and TypeScript grammars.
  * Must be called once before any parsing.
  */
 export async function initParser(): Promise<void> {
@@ -15,12 +18,18 @@ export async function initParser(): Promise<void> {
 
   await Parser.init();
 
-  // Locate the javascript.wasm from tree-sitter-wasms
-  const wasmPath = resolveWasmPath('tree-sitter-javascript.wasm');
-  const jsLang = await Parser.Language.load(wasmPath);
+  // Load JavaScript grammar
+  const jsWasmPath = resolveWasmPath('tree-sitter-javascript.wasm');
+  const jsLang = await Parser.Language.load(jsWasmPath);
+  jsParser = new Parser();
+  jsParser.setLanguage(jsLang);
 
+  // Load TypeScript grammar
+  const tsWasmPath = resolveWasmPath('tree-sitter-typescript.wasm');
+  const tsLang = await Parser.Language.load(tsWasmPath);
   tsParser = new Parser();
-  tsParser.setLanguage(jsLang);
+  tsParser.setLanguage(tsLang);
+
   parserInitialized = true;
 }
 
@@ -41,17 +50,25 @@ function resolveWasmPath(filename: string): string {
   return candidates[1];
 }
 
-export function getParser(): Parser {
-  if (!tsParser) {
+export function getParser(lang?: SourceLanguage): Parser {
+  const parser = lang === 'ts' ? tsParser : jsParser;
+  if (!parser) {
     throw new Error(
       'Parser not initialized. Call initParser() first.',
     );
   }
-  return tsParser;
+  return parser;
 }
 
-export function parseSource(source: string) {
-  const parser = getParser();
+/** Detects whether a file should use TypeScript parser based on extension and SFC script lang */
+export function detectLanguage(filePath: string, sfcScriptLang?: string): SourceLanguage {
+  if (sfcScriptLang === 'ts' || sfcScriptLang === 'tsx') return 'ts';
+  if (/\.(ts|tsx)$/i.test(filePath)) return 'ts';
+  return 'js';
+}
+
+export function parseSource(source: string, lang: SourceLanguage = 'js') {
+  const parser = getParser(lang);
   return parser.parse(source);
 }
 

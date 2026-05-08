@@ -77,4 +77,34 @@ export async function createSchema(
       properties STRING
     )
   `);
+
+  // Function/method-level granularity
+  await graph.execute(`
+    CREATE NODE TABLE Function (
+      id STRING,
+      name STRING,
+      filePath STRING,
+      entityPath STRING,
+      kind STRING,
+      startLine INT64,
+      endLine INT64,
+      content STRING,
+      PRIMARY KEY (id)
+    )
+  `);
+
+  await graph.execute(`
+    CREATE REL TABLE CALLS (
+      FROM Function TO Function,
+      confidence DOUBLE,
+      callSite STRING
+    )
+  `);
+
+  await graph.execute(`
+    CREATE REL TABLE defines (
+      FROM Entity TO Function,
+      properties STRING
+    )
+  `);
 }

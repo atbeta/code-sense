@@ -1,7 +1,7 @@
 import Parser, { type SyntaxNode } from 'web-tree-sitter';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { statSync } from 'node:fs';
+import { statSync, readFileSync } from 'node:fs';
 
 let parserInitialized = false;
 let jsParser: Parser | null = null;
@@ -20,13 +20,13 @@ export async function initParser(): Promise<void> {
 
   // Load JavaScript grammar
   const jsWasmPath = resolveWasmPath('tree-sitter-javascript.wasm');
-  const jsLang = await Parser.Language.load(jsWasmPath);
+  const jsLang = await loadWasm(jsWasmPath, 'tree-sitter-javascript.wasm');
   jsParser = new Parser();
   jsParser.setLanguage(jsLang);
 
   // Load TypeScript grammar
   const tsWasmPath = resolveWasmPath('tree-sitter-typescript.wasm');
-  const tsLang = await Parser.Language.load(tsWasmPath);
+  const tsLang = await loadWasm(tsWasmPath, 'tree-sitter-typescript.wasm');
   tsParser = new Parser();
   tsParser.setLanguage(tsLang);
 
@@ -48,6 +48,54 @@ function resolveWasmPath(filename: string): string {
     }
   }
   return candidates[1];
+}
+
+/** WASM magic bytes: \0asm */
+const WASM_MAGIC = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
+
+/** Minimum expected WASM sizes (in bytes) for cursory validation */
+const EXPECTED_SIZES: Record<string, number> = {
+  'tree-sitter-javascript.wasm': 600_000,  // ~632KB
+  'tree-sitter-typescript.wasm': 2_200_000, // ~2.2MB
+};
+
+async function loadWasm(filePath: string, filename: string): Promise<Parser.Language> {
+  const buf = readFileSync(filePath);
+
+  // Validate WASM magic bytes
+  if (!buf.subarray(0, 4).equals(WASM_MAGIC)) {
+    throw new Error(
+      `[CodeSense] Invalid WASM file: ${filename} at ${filePath}\n` +
+      `  File does not start with WASM magic bytes (\\0asm).\n` +
+      `  The file may be corrupted. Try: npm ci --force && npx codesense index`,
+    );
+  }
+
+  // Validate minimum size (catches truncated downloads)
+  const minSize = EXPECTED_SIZES[filename];
+  if (minSize && buf.length < minSize) {
+    throw new Error(
+      `[CodeSense] Truncated WASM file: ${filename}\n` +
+      `  Expected at least ${minSize} bytes, got ${buf.length} bytes.\n` +
+      `  The file was likely incompletely downloaded.\n` +
+      `  Fix: rm -rf node_modules/tree-sitter-wasms && npm install`,
+    );
+  }
+
+  try {
+    return await Parser.Language.load(filePath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('WebAssembly') || msg.includes('CompileError')) {
+      throw new Error(
+        `[CodeSense] Failed to compile WASM: ${filename}\n` +
+        `  ${msg}\n` +
+        `  This usually means the WASM binary is corrupted or incompatible.\n` +
+        `  Fix: rm -rf node_modules/tree-sitter-wasms && npm install`,
+      );
+    }
+    throw err;
+  }
 }
 
 export function getParser(lang?: SourceLanguage): Parser {

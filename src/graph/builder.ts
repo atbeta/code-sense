@@ -1045,7 +1045,8 @@ function matchMatchesEntity(
   detectorType: string,
 ): boolean {
   const entityName = (entity.properties.name as string) ?? '';
-  const entityPath = entity.filePath;
+  // Normalize to forward slashes for cross-platform consistent splits
+  const entityPath = entity.filePath.replace(/\\/g, '/');
 
   if (detectorType === 'call_expression') {
     const callee = String(match.callee ?? '');
@@ -1062,7 +1063,7 @@ function matchMatchesEntity(
     // UseXxxStore → extract xxx, match against basename
     const calleeCore = callee.replace(/^use/, '').replace(/Store$/i, '').toLowerCase();
     if (calleeCore.length > 2) {
-      const basename = entityPath.split(sep).pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
+      const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
       if (basename.includes(calleeCore) || calleeCore.includes(basename)) {
         return true;
       }
@@ -1075,8 +1076,8 @@ function matchMatchesEntity(
       if (args && args.length > 0) {
         const vuexModules = extractVuexModules(args);
         for (const mod of vuexModules) {
-          const basename = entityPath.split(sep).pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
-          if (basename === mod || entityPath.toLowerCase().includes(sep + mod + sep) || entityPath.toLowerCase().endsWith(sep + mod + '.ts') || entityPath.toLowerCase().endsWith(sep + mod + '.js')) {
+          const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
+          if (basename === mod || entityPath.toLowerCase().includes('/' + mod + '/') || entityPath.toLowerCase().endsWith('/' + mod + '.ts') || entityPath.toLowerCase().endsWith('/' + mod + '.js')) {
             return true;
           }
         }
@@ -1092,7 +1093,7 @@ function matchMatchesEntity(
       if (args && args.length > 0) {
         for (const arg of args) {
           const mod = arg.replace(/['"]/g, '').split('/')[0].toLowerCase();
-          const basename = entityPath.split(sep).pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
+          const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
           if (basename === mod || mod.length > 1 && basename.includes(mod)) {
             return true;
           }
@@ -1102,14 +1103,14 @@ function matchMatchesEntity(
     return entity.type.toLowerCase().includes('store');
   }
 
-  if (detectorType === 'import_expression') {
-    const rawPath = String(match.importPath ?? match.callee ?? '');
-    const importPath = rawPath.replace(/['"]/g, '');
+    if (detectorType === 'import_expression') {
+    const importPath = String(match.importPath ?? match.callee ?? '').replace(/['"]/g, '');
     if (importPath) {
-      const normalized = importPath.replace(/\\/g, '/');
-      const importName = normalized.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
-      const entityName = entityPath.split(sep).pop()?.replace(/\.[^.]+$/, '') ?? '';
-          return importName.toLowerCase() === entityName.toLowerCase();
+      const normalizedImport = importPath.replace(/\\/g, '/');
+      const normalizedEntity = entityPath.replace(/\\/g, '/');
+      const importName = normalizedImport.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
+      const normalized = normalizedEntity.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
+      return importName.toLowerCase() === normalized.toLowerCase();
     }
   }
 

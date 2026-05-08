@@ -5,6 +5,7 @@ import lbug from '@ladybugdb/core';
 export class LbugGraph {
   private db: lbug.Database;
   private conn: lbug.Connection;
+  private createdRels = new Set<string>();
 
   constructor(dbPath: string) {
     mkdirSync(dirname(dbPath), { recursive: true });
@@ -61,6 +62,19 @@ export class LbugGraph {
     relType: string,
     relProps?: Record<string, unknown>,
   ): Promise<void> {
+    const key = `${fromPath}||${toPath}||${relType}`;
+    if (this.createdRels.has(key)) return;
+    this.createdRels.add(key);
+
+    // LadybugDB only allows ONE edge (of any type) between a node pair.
+    // Check if any edge already exists before creating.
+    const existing = await this.query(`
+      MATCH (a:Entity {filePath: ${escapeCypher(fromPath)}})-[r]->(b:Entity {filePath: ${escapeCypher(toPath)}})
+      RETURN r
+      LIMIT 1
+    `);
+    if (existing.length > 0) return;
+
     const propsStr = relProps
       ? `{properties: ${escapeCypher(JSON.stringify(relProps))}}`
       : '';

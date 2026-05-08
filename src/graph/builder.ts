@@ -110,19 +110,7 @@ export async function buildGraph(
 
   const relations: RelationInstance[] = [];
 
-  // Auto-detected imports
-  const importEdges = await buildImportEdges(entities, sourceRoot);
-
-  for (const edge of importEdges) {
-    relations.push(edge);
-    try {
-      await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties);
-    } catch {
-      // target may not exist
-    }
-  }
-
-  // Config-defined relationships
+  // Config-defined relationships (create first so they take priority over imports)
   for (const [relType, relDef] of Object.entries(config.relationships ?? {})) {
     if (relType === 'imports') continue;
 
@@ -139,6 +127,18 @@ export async function buildGraph(
       } catch {
         // target may not exist
       }
+    }
+  }
+
+  // Auto-detected imports (lower priority — skip if edge already exists)
+  const importEdges = await buildImportEdges(entities, sourceRoot);
+
+  for (const edge of importEdges) {
+    relations.push(edge);
+    try {
+      await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties);
+    } catch {
+      // target may not exist
     }
   }
 
@@ -1018,9 +1018,7 @@ async function buildRelationshipEdges(
       const matches = detector.detect(ctx, {
         pattern: detectCfg.pattern,
       });
-      if (relType === 'matches_route') {
-            }
-    
+
       for (const match of matches) {
         for (const toEntity of toEntities) {
           if (matchMatchesEntity(match, toEntity, detectCfg.type)) {

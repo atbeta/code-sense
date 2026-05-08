@@ -1,4 +1,5 @@
 import { resolve, relative, sep } from 'node:path';
+import { execSync } from 'node:child_process';
 import { LbugGraph } from '../graph/lbug.js';
 import type { ResolvedConfig } from '../types/config.js';
 
@@ -685,6 +686,466 @@ export async function functionContext(
       const r = row as Record<string, unknown>;
       parts.push(`- \`${r.name}\` (${r.kind}) :${r.startLine}`);
     }
+  }
+
+  return parts.join('\n');
+}
+
+// ===== diff_impact =====
+
+export async function diffImpact(
+  ctx: ToolContext,
+  params: { filePath?: string; diffContent?: string; baseRef?: string },
+): Promise<string> {
+  let diffText: string;
+  let targetFile: string;
+
+  if (params.diffContent) {
+    diffText = params.diffContent;
+    // Try to extract file path from diff header
+    const headerMatch = diffText.match(/^diff --git a\/(.+?) b\/(.+?)$/m);
+    targetFile = headerMatch ? headerMatch[2] : '';
+  } else if (params.filePath) {
+    const baseRef = params.baseRef ?? 'HEAD';
+    const sourceRoot = ctx.config.project.source_root;
+    // Resolve: if filePath is relative to source_root, construct the git path
+    const gitFilePath = params.filePath;
+    try {
+      diffText = execSync(
+        `git diff ${baseRef} -- "${gitFilePath}"`,
+        { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, cwd: process.cwd() },
+      );
+    } catch {
+      return `Failed to run git diff on ${params.filePath}. Make sure this is a git repository.`;
+    }
+  } else {
+    const baseRef = params.baseRef ?? 'HEAD';
+    try {
+      diffText = execSync(
+        `git diff ${baseRef}`,
+        { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, cwd: process.cwd() },
+      );
+    } catch {
+      return 'Failed to run git diff. Make sure this is a git repository.';
+    }
+  }
+
+  if (!diffText.trim()) {
+    return 'No changes detected in the diff.';
+  }
+
+  // Parse the diff to extract changed files and line ranges
+  interface FileChange {
+    filePath: string;
+    changedRanges: Array<{ start: number; end: number }>;
+  }
+  const fileChanges: Map<string, FileChange> = new Map();
+
+  const fileHeaderRe = /^diff --git a\/(.+?) b\/(.+?)$/m;
+  const hunkHeaderRe = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+  let currentFile = '';
+  for (const line of diffText.split('\n')) {
+    const fileMatch = line.match(/^diff --git a\/(.+?) b\/(.+?)$/);
+    if (fileMatch) {
+      currentFile = resolve(process.cwd(), fileMatch[2]);
+      if (!fileChanges.has(currentFile)) {
+        fileChanges.set(currentFile, { filePath: currentFile, changedRanges: [] });
+      }
+      continue;
+    }
+
+    const hunkMatch = line.match(hunkHeaderRe);
+    if (hunkMatch && currentFile) {
+      const newStart = parseInt(hunkMatch[3], 10);
+      const newCount = parseInt(hunkMatch[4] || '1', 10);
+      const change = fileChanges.get(currentFile)!;
+      change.changedRanges.push({ start: newStart, end: newStart + newCount - 1 });
+    }
+  }
+
+  if (fileChanges.size === 0) {
+    return 'No file changes detected in the diff.';
+  }
+
+  const parts: string[] = [
+    `## Diff Impact Analysis`,
+    params.filePath
+      ? `File: \`${relative(process.cwd(), params.filePath)}\` vs ${params.baseRef ?? 'HEAD'}`
+      : `Changes vs ${params.baseRef ?? 'HEAD'}`,
+    '',
+  ];
+
+  interface ImpactedFn {
+    name: string;
+    kind: string;
+    filePath: string;
+    line: number;
+    impactDepth: number;
+    reason: string;
+  }
+
+  const allImpacts: ImpactedFn[] = [];
+  const seen = new Set<string>();
+
+  for (const [filePath, change] of fileChanges) {
+    const relPath = relative(ctx.config.project.source_root, filePath) || relative(process.cwd(), filePath) || filePath;
+
+    // Find functions in this file whose line ranges overlap with changed ranges
+    const funcRows = await ctx.graph.query(
+      `MATCH (f:Function) WHERE f.filePath = '${escapeStr(filePath)}' RETURN f`,
+    );
+
+    const directlyChanged: ImpactedFn[] = [];
+
+    for (const row of funcRows) {
+      const f = (row as Record<string, unknown>).f as Record<string, unknown>;
+      const fnStart = f.startLine as number;
+      const fnEnd = f.endLine as number;
+
+      for (const range of change.changedRanges) {
+        // Check if the change range overlaps with the function
+        if (range.start <= fnEnd && range.end >= fnStart) {
+          const name = f.name as string;
+          const key = `${filePath}#${name}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            directlyChanged.push({
+              name,
+              kind: (f.kind as string) ?? 'function',
+              filePath,
+              line: fnStart,
+              impactDepth: 0,
+              reason: `lines ${range.start}-${range.end} changed`,
+            });
+          }
+          break;
+        }
+      }
+    }
+
+    if (directlyChanged.length > 0) {
+      parts.push(`### 📝 Changed: \`${relPath}\``);
+      for (const fn of directlyChanged) {
+        parts.push(`- **${fn.name}** (${fn.kind}) :${fn.line} — ${fn.reason}`);
+      }
+      allImpacts.push(...directlyChanged);
+    } else if (change.changedRanges.length > 0) {
+      parts.push(`### 📝 Changed: \`${relPath}\` (no tracked functions in changed regions)`);
+    }
+  }
+
+  // Trace downstream impact via CALLS edges
+  if (allImpacts.length > 0) {
+    const downstream = new Map<number, ImpactedFn[]>();
+    const queue: Array<{ fnId: string; depth: number }> = [];
+
+    for (const imp of allImpacts) {
+      const fnRow = await ctx.graph.query(
+        `MATCH (f:Function {id: '${escapeStr(imp.filePath + '#' + imp.name + ':' + imp.line)}'}) RETURN f.id as id`,
+      );
+      if (fnRow.length > 0) {
+        queue.push({
+          fnId: (fnRow[0] as Record<string, unknown>).id as string,
+          depth: 0,
+        });
+      }
+    }
+
+    const traced = new Set<string>();
+    let head = 0;
+    while (head < queue.length && head < 200) {
+      const { fnId, depth } = queue[head++];
+      if (traced.has(fnId)) continue;
+      traced.add(fnId);
+
+      if (depth > 0) {
+        const calleeRows = await ctx.graph.query(
+          `MATCH (f:Function {id: '${escapeStr(fnId)}'}) RETURN f.name as name, f.kind as kind, f.filePath as filePath, f.startLine as startLine`,
+        );
+        if (calleeRows.length > 0) {
+          const f = calleeRows[0] as Record<string, unknown>;
+          const list = downstream.get(depth) ?? [];
+          list.push({
+            name: f.name as string,
+            kind: (f.kind as string) ?? 'function',
+            filePath: f.filePath as string,
+            line: f.startLine as number,
+            impactDepth: depth,
+            reason: 'downstream CALLS impact',
+          });
+          downstream.set(depth, list);
+        }
+      }
+
+      if (depth >= 3) continue;
+
+      // Follow outgoing CALLS
+      const nextRows = await ctx.graph.query(
+        `MATCH (f:Function {id: '${escapeStr(fnId)}'})-[r:CALLS]->(next:Function) RETURN next.id as id`,
+      );
+      for (const row of nextRows) {
+        queue.push({
+          fnId: (row as Record<string, unknown>).id as string,
+          depth: depth + 1,
+        });
+      }
+    }
+
+    if (downstream.size > 0) {
+      parts.push('');
+      parts.push('### ⚠️ Downstream Impact (via CALLS)');
+      for (let d = 1; d <= 3; d++) {
+        const level = downstream.get(d);
+        if (!level || level.length === 0) continue;
+        parts.push(`**Depth ${d}** (${level.length} functions)`);
+        for (const fn of level) {
+          const cRel = relative(ctx.config.project.source_root, fn.filePath);
+          parts.push(`- → \`${fn.name}\` (${fn.kind}) in \`${cRel}\` :${fn.line}`);
+        }
+      }
+    }
+
+    // Summary: unique files impacted
+    const impactedFiles = new Set<string>();
+    for (const imp of allImpacts) impactedFiles.add(imp.filePath);
+    for (const [, list] of downstream) {
+      for (const fn of list) impactedFiles.add(fn.filePath);
+    }
+
+    parts.push('');
+    parts.push(`**Summary**: ${allImpacts.length} function(s) directly changed, ${traced.size - allImpacts.length} impacted downstream across ${impactedFiles.size} file(s).`);
+  }
+
+  return parts.join('\n');
+}
+
+// ===== semantic_search =====
+
+interface SearchIndex {
+  functions: Array<{
+    id: string;
+    name: string;
+    kind: string;
+    filePath: string;
+    startLine: number;
+    tokens: string[];
+    snippet: string;
+  }>;
+  entities: Array<{
+    filePath: string;
+    name: string;
+    entityType: string;
+    tokens: string[];
+  }>;
+}
+
+function tokenizeCode(text: string): string[] {
+  // Code-aware tokenization: split on camelCase, PascalCase, snake_case, kebab-case
+  const tokens: string[] = [];
+  // Split identifiers: camelCase/PascalCase
+  const words = text.split(/[^a-zA-Z0-9_$]+/);
+  for (const word of words) {
+    if (!word || word.length < 2) continue;
+    // Split camelCase: loadUserProfile → load, User, Profile
+    const subTokens = word.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').split(/\s+/);
+    for (const t of subTokens) {
+      const lower = t.toLowerCase();
+      if (lower.length >= 2 && !/^[0-9_$]+$/.test(lower)) {
+        tokens.push(lower);
+      }
+    }
+  }
+  return tokens;
+}
+
+function computeTFIDF(
+  queryTokens: string[],
+  docTokens: string[],
+  docFreq: Map<string, number>,
+  totalDocs: number,
+): number {
+  // Simple TF-IDF cosine similarity
+  const termFreq = new Map<string, number>();
+  for (const t of docTokens) {
+    termFreq.set(t, (termFreq.get(t) ?? 0) + 1);
+  }
+
+  let score = 0;
+  let queryNorm = 0;
+  let docNorm = 0;
+
+  const seenTerms = new Set<string>();
+  for (const t of queryTokens) {
+    if (seenTerms.has(t)) continue;
+    seenTerms.add(t);
+    const tf = termFreq.get(t) ?? 0;
+    const df = docFreq.get(t) ?? 1;
+    const idf = Math.log((totalDocs + 1) / (df + 1)) + 1;
+    const qWeight = 1 * idf;
+    const dWeight = tf * idf;
+    score += qWeight * dWeight;
+    queryNorm += qWeight * qWeight;
+    docNorm += dWeight * dWeight;
+  }
+
+  if (queryNorm === 0 || docNorm === 0) return 0;
+  return score / (Math.sqrt(queryNorm) * Math.sqrt(docNorm));
+}
+
+export async function semanticSearch(
+  ctx: ToolContext,
+  params: { query: string; limit?: number; kind?: string },
+): Promise<string> {
+  const queryStr = params.query.trim();
+  if (!queryStr) return 'Please provide a search query.';
+
+  // Load all functions from the graph
+  const funcRows = await ctx.graph.query(
+    `MATCH (f:Function) RETURN f.id as id, f.name as name, f.kind as kind, f.filePath as filePath, f.startLine as startLine, f.content as content`,
+  );
+
+  const queryTokens = tokenizeCode(queryStr.toLowerCase());
+  if (queryTokens.length === 0) return 'Query must contain searchable terms.';
+
+  // Build documents
+  interface Doc {
+    id: string;
+    name: string;
+    kind: string;
+    filePath: string;
+    startLine: number;
+    tokens: string[];
+    fullTokens: string[];
+    snippet: string;
+  }
+
+  const docs: Doc[] = [];
+  const docFreq = new Map<string, number>();
+
+  for (const row of funcRows) {
+    const r = row as Record<string, unknown>;
+    const kind = (r.kind as string) ?? 'function';
+    if (params.kind && kind !== params.kind) continue;
+
+    const name = r.name as string;
+    const content = (r.content as string) ?? '';
+    const fullText = name + ' ' + content;
+    const tokens = tokenizeCode(fullText);
+    const uniqueTokens = [...new Set(tokens)];
+
+    for (const t of uniqueTokens) {
+      docFreq.set(t, (docFreq.get(t) ?? 0) + 1);
+    }
+
+    docs.push({
+      id: r.id as string,
+      name,
+      kind,
+      filePath: r.filePath as string,
+      startLine: r.startLine as number,
+      tokens,
+      fullTokens: tokens,
+      snippet: content.substring(0, 120).replace(/\n/g, ' '),
+    });
+  }
+
+  // Also index entities
+  const entityRows = await ctx.graph.query(
+    `MATCH (e:Entity) RETURN e.name as name, e.filePath as filePath, e.entityType as entityType, e.properties as props`,
+  );
+
+  for (const row of entityRows) {
+    const r = row as Record<string, unknown>;
+    const name = r.name as string;
+    const entityType = (r.entityType as string) ?? 'file';
+    if (params.kind && entityType !== params.kind) continue;
+
+    let propsText = '';
+    try {
+      const props = JSON.parse((r.props as string) || '{}');
+      propsText = Object.values(props).filter(v => typeof v === 'string').join(' ');
+    } catch { /* ignore */ }
+
+    const fullText = name + ' ' + entityType + ' ' + propsText;
+    const tokens = tokenizeCode(fullText);
+    const uniqueTokens = [...new Set(tokens)];
+    for (const t of uniqueTokens) {
+      docFreq.set(t, (docFreq.get(t) ?? 0) + 1);
+    }
+
+    docs.push({
+      id: (r.filePath as string) ?? '',
+      name,
+      kind: entityType,
+      filePath: r.filePath as string,
+      startLine: 0,
+      tokens,
+      fullTokens: tokens,
+      snippet: `[${entityType}]`,
+    });
+  }
+
+  // Score documents
+  const scored = docs.map(doc => ({
+    ...doc,
+    score: computeTFIDF(queryTokens, doc.fullTokens, docFreq, docs.length),
+  }));
+
+  // Boost by name match
+  const queryLower = queryStr.toLowerCase();
+  for (const s of scored) {
+    if (s.name.toLowerCase() === queryLower) s.score += 0.5;
+    else if (s.name.toLowerCase().includes(queryLower)) s.score += 0.3;
+    if (s.name.toLowerCase().startsWith(queryLower)) s.score += 0.2;
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const limit = Math.min(params.limit ?? 15, 30);
+  const top = scored.filter(s => s.score > 0).slice(0, limit);
+
+  if (top.length === 0) {
+    // If kind filter is set and no results matched, fall back to listing by kind
+    if (params.kind) {
+      const kindRows = await ctx.graph.query(
+        `MATCH (f:Function) WHERE f.kind = '${escapeStr(params.kind)}' RETURN f.name as name, f.kind as kind, f.filePath as filePath, f.startLine as startLine, f.content as content LIMIT ${limit}`,
+      );
+      if (kindRows.length > 0) {
+        const parts: string[] = [
+          `## 🔍 Semantic Search: "${queryStr}" (filtered by kind: ${params.kind})`,
+          `No semantic matches. Showing ${kindRows.length} ${params.kind}(s):`, '',
+        ];
+        for (let i = 0; i < kindRows.length; i++) {
+          const r = kindRows[i] as Record<string, unknown>;
+          const cRel = relative(ctx.config.project.source_root, (r.filePath as string) || '');
+          parts.push(`**${i + 1}.** \`${r.name}\` :${r.startLine}`);
+          parts.push(`   📁 \`${cRel}\``);
+          const snippet = ((r.content as string) ?? '').substring(0, 80).replace(/\n/g, ' ');
+          if (snippet) parts.push(`   📄 ${snippet}`);
+          parts.push('');
+        }
+        return parts.join('\n');
+      }
+    }
+    return `No results found for "${queryStr}". Try different keywords.`;
+  }
+
+  const parts: string[] = [
+    `## 🔍 Semantic Search: "${queryStr}"`,
+    `Found ${top.length} results:`, '',
+  ];
+
+  for (let i = 0; i < top.length; i++) {
+    const r = top[i];
+    const cRel = relative(ctx.config.project.source_root, r.filePath);
+    const scorePct = Math.round(r.score * 100);
+    parts.push(`**${i + 1}.** \`${r.name}\` (${r.kind}) — score: ${scorePct}%`);
+    parts.push(`   📁 \`${cRel}\` :${r.startLine || '—'}`);
+    if (r.snippet) {
+      parts.push(`   📄 ${r.snippet}`);
+    }
+    parts.push('');
   }
 
   return parts.join('\n');

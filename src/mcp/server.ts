@@ -16,6 +16,8 @@ import {
   traceUsage,
   findEntrypoints,
   functionContext,
+  diffImpact,
+  semanticSearch,
 } from './tools.js';
 import type { ToolContext } from './tools.js';
 
@@ -150,6 +152,59 @@ export async function startMCPServer(
     },
   );
 
+  // === diff_impact ===
+  server.registerTool(
+    'diff_impact',
+    {
+      description:
+        'Analyze the impact of your git changes. Given a file path or diff content, identifies which functions were changed, then traces CALLS edges to find downstream impacted functions. Essential for PR review and CI safety checks. Can accept a file path (runs git diff automatically) or raw diff content.',
+      inputSchema: z.object({
+        filePath: z
+          .string()
+          .optional()
+          .describe('Optional file path to diff against baseRef. If omitted, diffs the entire working tree.'),
+        diffContent: z
+          .string()
+          .optional()
+          .describe('Optional raw git diff content. Use this to pass a pre-computed diff instead of running git.'),
+        baseRef: z
+          .string()
+          .optional()
+          .describe('Git reference to diff against (default: HEAD). e.g. "main", "origin/main", "HEAD~1"'),
+      }),
+    },
+    async ({ filePath, diffContent, baseRef }) => {
+      const result = await diffImpact(ctx, { filePath, diffContent, baseRef });
+      return { content: [{ type: 'text', text: result }] };
+    },
+  );
+
+  // === semantic_search ===
+  server.registerTool(
+    'semantic_search',
+    {
+      description:
+        'Search for functions, methods, and entities using natural language or keywords. Uses TF-IDF with code-aware tokenization (camelCase, snake_case, PascalCase splitting) and name boosting. Answers: "find the login handler", "where is the auth validation logic?", "search for composables that deal with dark mode".',
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe('Natural language search query, e.g. "login handler", "auth validation", "dark mode toggle"'),
+        limit: z
+          .number()
+          .optional()
+          .describe('Maximum results to return (default: 15, max: 30)'),
+        kind: z
+          .string()
+          .optional()
+          .describe('Optional filter by kind: function, method, composable_function, store_action, component, store, composable'),
+      }),
+    },
+    async ({ query, limit, kind }) => {
+      const result = await semanticSearch(ctx, { query, limit, kind });
+      return { content: [{ type: 'text', text: result }] };
+    },
+  );
+
   // === cypher (debug) ===
   server.registerTool(
     'cypher',
@@ -202,7 +257,7 @@ export async function startMCPServer(
     await new Promise<void>((resolve) => {
       app.listen(port, () => {
         console.error(`[CodeSense] MCP server listening on http://localhost:${port}/mcp`);
-        console.error(`[CodeSense] 8 tools available`);
+        console.error(`[CodeSense] 10 tools available`);
         console.error(`[CodeSense] Config: ${configPath}`);
         console.error(`[CodeSense] Graph DB: ${dbPath}`);
         console.error(`[CodeSense] Source root: ${sourceRoot}`);
@@ -214,7 +269,7 @@ export async function startMCPServer(
     const transport = new StdioServerTransport();
     await server.connect(transport);
 
-    console.error(`[CodeSense] MCP server started — 8 tools available`);
+    console.error(`[CodeSense] MCP server started — 10 tools available`);
     console.error(`[CodeSense] Config: ${configPath}`);
     console.error(`[CodeSense] Graph DB: ${dbPath}`);
     console.error(`[CodeSense] Source root: ${sourceRoot}`);

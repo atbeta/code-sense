@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, rmSync } from 'node:fs';
-import { basename, extname, resolve, dirname, join } from 'node:path';
+import { basename, extname, resolve, dirname, join, sep } from 'node:path';
 import type { SyntaxNode } from 'web-tree-sitter';
 import type { ResolvedConfig } from '../types/config.js';
 import type { EntityInstance, RelationInstance } from '../types/graph.js';
@@ -39,6 +39,7 @@ export async function buildGraph(
   await createSchema(graph, config);
 
   const scanned = await scanFiles(config, sourceRoot);
+  console.error(`[CodeSense] Scanned ${scanned.length} files`);
 
   const entities: EntityInstance[] = [];
   const frameworkAPIUsage: { fromFile: string; apiName: string; frameworkName: string }[] = [];
@@ -58,7 +59,9 @@ export async function buildGraph(
       config,
       frameworkAPIMap,
     );
-    if (result) {
+    if (!result) {
+      console.error(`[CodeSense] processFile returned null for: ${file.filePath}`);
+    } else {
       entities.push(result.entity);
       frameworkAPIUsage.push(...result.apiUsage);
 
@@ -111,6 +114,11 @@ export async function buildGraph(
 
   // Auto-detected imports
   const importEdges = await buildImportEdges(entities, sourceRoot);
+  if (entities.length > 0) {
+    console.error(`[CodeSense] First entity path: ${entities[0].filePath}`);
+    console.error(`[CodeSense] First entity imports: ${JSON.stringify((entities[0].properties._imports as any)?.slice(0, 2))}`);
+  }
+  console.error(`[CodeSense] buildImportEdges: ${importEdges.length} edges`);
   for (const edge of importEdges) {
     relations.push(edge);
     try {
@@ -871,6 +879,9 @@ function resolveImportPath(
   importSource: string,
   sourceRoot: string,
 ): string | null {
+  // Normalize paths to forward slashes for cross-platform consistency
+  const toForwardSlash = (p: string) => p.replace(/\\/g, '/');
+
   // Relative imports: ./foo, ../bar
   if (importSource.startsWith('.')) {
     const dir = dirname(fromFile);
@@ -879,7 +890,7 @@ function resolveImportPath(
       '', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue',
     ]) {
       const tryPath = basePath + ext;
-      if (existsSync(tryPath)) return tryPath;
+      if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
     return null;
   }
@@ -892,7 +903,7 @@ function resolveImportPath(
       '', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue',
     ]) {
       const tryPath = basePath + ext;
-      if (existsSync(tryPath)) return tryPath;
+      if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
     return null;
   }
@@ -906,7 +917,7 @@ function resolveImportPath(
       '', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue',
     ]) {
       const tryPath = basePath + ext;
-      if (existsSync(tryPath)) return tryPath;
+      if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
     return null;
   }
@@ -922,7 +933,7 @@ function resolveImportPath(
           '', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue',
         ]) {
           const tryPath = basePath + ext;
-          if (existsSync(tryPath)) return tryPath;
+          if (existsSync(tryPath)) return toForwardSlash(tryPath);
         }
       }
     }
@@ -1052,7 +1063,7 @@ function matchMatchesEntity(
     // UseXxxStore → extract xxx, match against basename
     const calleeCore = callee.replace(/^use/, '').replace(/Store$/i, '').toLowerCase();
     if (calleeCore.length > 2) {
-      const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
+      const basename = entityPath.split(sep).pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
       if (basename.includes(calleeCore) || calleeCore.includes(basename)) {
         return true;
       }
@@ -1065,8 +1076,8 @@ function matchMatchesEntity(
       if (args && args.length > 0) {
         const vuexModules = extractVuexModules(args);
         for (const mod of vuexModules) {
-          const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
-          if (basename === mod || entityPath.toLowerCase().includes('/' + mod + '/') || entityPath.toLowerCase().endsWith('/' + mod + '.ts') || entityPath.toLowerCase().endsWith('/' + mod + '.js')) {
+          const basename = entityPath.split(sep).pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
+          if (basename === mod || entityPath.toLowerCase().includes(sep + mod + sep) || entityPath.toLowerCase().endsWith(sep + mod + '.ts') || entityPath.toLowerCase().endsWith(sep + mod + '.js')) {
             return true;
           }
         }
@@ -1082,7 +1093,7 @@ function matchMatchesEntity(
       if (args && args.length > 0) {
         for (const arg of args) {
           const mod = arg.replace(/['"]/g, '').split('/')[0].toLowerCase();
-          const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
+          const basename = entityPath.split(sep).pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
           if (basename === mod || mod.length > 1 && basename.includes(mod)) {
             return true;
           }
@@ -1095,7 +1106,7 @@ function matchMatchesEntity(
   if (detectorType === 'import_expression') {
     const callee = String(match.callee ?? '').replace(/['"]/g, '');
     if (callee) {
-      const basename = entityPath.split('/').pop()?.toLowerCase() ?? '';
+      const basename = entityPath.split(sep).pop()?.toLowerCase() ?? '';
       if (callee.toLowerCase().includes(basename) || basename.includes(callee.toLowerCase())) {
         return true;
       }

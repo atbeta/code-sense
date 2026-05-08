@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { CodeSenseConfig, ResolvedConfig } from '../types/config.js';
 
@@ -43,7 +43,7 @@ export function resolveSourceRoot(
   config: ResolvedConfig,
   configDir: string,
 ): string {
-  if (config.project.source_root.startsWith('/')) {
+  if (config.project.source_root.startsWith('/') || /^([a-zA-Z]:\\)/.test(config.project.source_root)) {
     return config.project.source_root;
   }
   return resolve(configDir, config.project.source_root);

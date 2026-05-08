@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import path, { sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LbugGraph } from '../graph/lbug.js';
 import { graphToVis } from './adapter.js';
@@ -271,8 +271,8 @@ function edgeColor(t) { return EDGE_COLORS[t] || '#8b949e'; }
 function edgeWidth(t) { return EDGE_WIDTH[t] || 0.5; }
 function nodeSize(t) { return NODE_SIZES[t] || 6; }
 function shortPath(p) {
-  var parts = p.split('/');
-  return parts.length > 3 ? '.../' + parts.slice(-3).join('/') : p;
+  var parts = p.split(sep);
+  return parts.length > 3 ? '...' + sep + parts.slice(-3).join(sep) : p;
 }
 
 function rgba(hex, alpha) {

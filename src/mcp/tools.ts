@@ -1,4 +1,4 @@
-import { resolve, relative } from 'node:path';
+import { resolve, relative, sep } from 'node:path';
 import { LbugGraph } from '../graph/lbug.js';
 import type { ResolvedConfig } from '../types/config.js';
 
@@ -414,7 +414,7 @@ export async function findEntrypoints(ctx: ToolContext): Promise<string> {
     const r = row as Record<string, unknown>;
     const rel = relative(process.cwd(), (r.filePath as string) || '') || '';
     // Heuristic: components in views/, pages/, or named App.* are likely entry points
-    return rel.includes('/views/') || rel.includes('/pages/') ||
+    return rel.includes(sep + 'views' + sep) || rel.includes(sep + 'pages' + sep) ||
       rel.toLowerCase().includes('app.vue') || rel.toLowerCase().includes('main');
   });
 

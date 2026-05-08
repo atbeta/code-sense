@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { existsSync, writeFileSync, readdirSync } from 'node:fs';
 import { loadConfig, resolveSourceRoot } from './config/loader.js';
 import { buildGraph } from './graph/builder.js';
@@ -92,7 +92,7 @@ program
   .action(() => {
     const cwd = process.cwd();
     const srcDir = resolve(cwd, 'src');
-    const projectName = cwd.split('/').pop() ?? 'my-project';
+    const projectName = cwd.split(sep).pop() ?? 'my-project';
 
     // Probe the project: JS or TS? Which directories exist?
     let ext = 'ts';

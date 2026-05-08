@@ -514,7 +514,7 @@ function runNoverlap(g) {
 
 // ===== BUILD GRAPH =====
 function buildGraph(data) {
-  var g = new graphology.Graph();
+  var g = new graphology.MultiGraph();
   var nodeCount = data.nodes.length;
   var circleR = Math.max(300, Math.sqrt(nodeCount) * 45);
 

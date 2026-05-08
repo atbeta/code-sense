@@ -10,7 +10,7 @@ export function loadConfig(configPath?: string): ResolvedConfig {
   try {
     raw = readFileSync(path, 'utf-8');
   } catch {
-    throw new Error(`Config file not found at ${path}. Run 'codesense init' to create one.`);
+    throw new Error(`Config file not found at ${path}. Run 'code-sense init' to create one.`);
   }
 
   const parsed = parseYaml(raw) as CodeSenseConfig;

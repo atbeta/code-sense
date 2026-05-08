@@ -35,8 +35,14 @@ export async function initParser(): Promise<void> {
 
 function resolveWasmPath(filename: string): string {
   const __dirname = dirname(fileURLToPath(import.meta.url));
+  // package root = dist/engine/../..  = @code-sense/core/
+  const pkgRoot = resolve(__dirname, '..', '..');
   const candidates = [
-    resolve(__dirname, '..', '..', 'node_modules', 'tree-sitter-wasms', 'out', filename),
+    // Installed inside package's own node_modules (npm local)
+    resolve(pkgRoot, 'node_modules', 'tree-sitter-wasms', 'out', filename),
+    // Hoisted to parent node_modules (pnpm, npx cache)
+    resolve(pkgRoot, '..', '..', 'tree-sitter-wasms', 'out', filename),
+    // User's project node_modules (global install)
     resolve(process.cwd(), 'node_modules', 'tree-sitter-wasms', 'out', filename),
   ];
   for (const p of candidates) {
@@ -47,7 +53,7 @@ function resolveWasmPath(filename: string): string {
       // not found
     }
   }
-  return candidates[1];
+  return candidates[0];
 }
 
 /** WASM magic bytes: \0asm */
@@ -67,7 +73,7 @@ async function loadWasm(filePath: string, filename: string): Promise<Parser.Lang
     throw new Error(
       `[CodeSense] Invalid WASM file: ${filename} at ${filePath}\n` +
         `  File does not start with WASM magic bytes (\\0asm).\n` +
-        `  The file may be corrupted. Try: npm ci --force && npx codesense index`,
+        `  The file may be corrupted. Try: npm ci --force && npx @code-sense/core index`,
     );
   }
 

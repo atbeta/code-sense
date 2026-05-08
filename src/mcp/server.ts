@@ -36,7 +36,7 @@ export async function startMCPServer(
   const ctx: ToolContext = { graph, config, dbPath };
 
   const server = new McpServer({
-    name: 'codesense',
+    name: 'code-sense',
     version: '0.1.0',
   });
 

@@ -896,7 +896,7 @@ function setupHoverTooltip() {
 fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
   if (data.error) { document.getElementById('loading').innerHTML='<span style="color:#f85149">Error: '+data.error+'</span>'; return; }
   if (!data.nodes || data.nodes.length === 0) {
-    document.getElementById('loading').innerHTML='<span style="color:var(--muted)">No entities indexed. Run <code>codesense index</code> first.</span>';
+    document.getElementById('loading').innerHTML='<span style="color:var(--muted)">No entities indexed. Run <code>code-sense index</code> first.</span>';
     return;
   }
 

@@ -8,16 +8,23 @@ Inspired by [GitNexus](https://github.com/abhigyanpatwari/GitNexus), focused spe
 
 ```bash
 # Initialize config for your project
-npx codesense init
+npx @code-sense/core init
 
 # Index your codebase
-npx codesense index
+npx @code-sense/core index
 
 # Explore the graph visually
-npx codesense view
+npx @code-sense/core view
 
 # Or connect via MCP to AI coding agents
-npx codesense serve
+npx @code-sense/core serve
+```
+
+Or install globally:
+
+```bash
+npm install -g @code-sense/core
+code-sense init
 ```
 
 ## How It Works
@@ -111,9 +118,9 @@ Example configs for common scenarios:
 ```json
 {
   "mcpServers": {
-    "codesense": {
-      "command": "node",
-      "args": ["path/to/dist/index.js", "serve", "-c", "codesense.yaml"]
+    "code-sense": {
+      "command": "npx",
+      "args": ["@code-sense/core", "serve", "-c", "codesense.yaml"]
     }
   }
 }
@@ -121,7 +128,7 @@ Example configs for common scenarios:
 
 ## Visualization
 
-The graph viewer (`codesense view`) renders an interactive knowledge graph in the browser:
+The graph viewer (`code-sense view`) renders an interactive knowledge graph in the browser:
 
 - **ForceAtlas2 layout** — adaptive physics simulation for readable graphs
 - **Node highlighting** — click a node to focus, dimming everything else

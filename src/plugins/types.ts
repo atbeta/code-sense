@@ -115,7 +115,7 @@ export interface CodeSensePlugin {
 
   /**
    * Detect whether this plugin applies to the project.
-   * Called during `codesense index` to decide if plugin should be activated.
+   * Called during \`code-sense index\` to decide if plugin should be activated.
    */
   detect(projectRoot: string): Promise<DetectionResult> | DetectionResult;
 

@@ -13,7 +13,7 @@ import { vuePlugin } from './plugins/builtin/vue/index.js';
 const program = new Command();
 
 program
-  .name('codesense')
+  .name('code-sense')
   .description('Config-driven code knowledge graph for Vue projects')
   .version('0.1.0');
 
@@ -21,7 +21,7 @@ program
   .command('index')
   .description('Build the code knowledge graph for a project')
   .option('-c, --config <path>', 'Path to codesense.yaml', 'codesense.yaml')
-  .option('-o, --output <path>', 'Output path for the KuzuDB graph', '.codesense/graph')
+  .option('-o, --output <path>', 'Output path for the KuzuDB graph', '.code-sense/graph')
   .action(async (options) => {
     const configPath = resolve(process.cwd(), options.config);
     const outputPath = resolve(process.cwd(), options.output);
@@ -65,7 +65,7 @@ program
   .command('serve')
   .description('Start the MCP server (stdio by default, HTTP with --port)')
   .option('-c, --config <path>', 'Path to codesense.yaml', 'codesense.yaml')
-  .option('-o, --output <path>', 'Path to the KuzuDB graph', '.codesense/graph')
+  .option('-o, --output <path>', 'Path to the KuzuDB graph', '.code-sense/graph')
   .option('-p, --port <number>', 'Run as HTTP server on the given port', parseInt)
   .action(async (options) => {
     const configPath = resolve(process.cwd(), options.config);
@@ -77,7 +77,7 @@ program
 program
   .command('view')
   .description('Start the graph visualization server')
-  .option('-o, --output <path>', 'Path to the graph database', '.codesense/graph')
+  .option('-o, --output <path>', 'Path to the graph database', '.code-sense/graph')
   .option('-p, --port <number>', 'HTTP server port', '3456')
   .action(async (options) => {
     const outputPath = resolve(process.cwd(), options.output);

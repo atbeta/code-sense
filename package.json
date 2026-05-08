@@ -1,12 +1,35 @@
 {
-  "name": "code-sense",
-  "version": "0.1.0",
-  "description": "A config-driven code knowledge graph engine for Vue projects, powered by tree-sitter + LadybugDB + MCP + Sigma.js",
+  "name": "@code-sense/core",
+  "version": "0.1.2",
+  "description": "Config-driven code knowledge graph for Vue projects — tree-sitter AST parsing, MCP server for AI agents, Sigma.js visualization",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "codesense": "dist/index.js"
+    "code-sense": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opencode-cc/code-sense.git"
+  },
+  "keywords": [
+    "vue",
+    "code-graph",
+    "knowledge-graph",
+    "mcp",
+    "tree-sitter",
+    "ast",
+    "code-analysis",
+    "electron",
+    "cli",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "author": "CodeSense Contributors",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "tsc",
@@ -22,7 +45,7 @@
     "format": "prettier --check 'src/**/*.ts'",
     "format:fix": "prettier --write 'src/**/*.ts'",
     "check": "pnpm lint && pnpm format && pnpm build",
-    "prepublishOnly": "pnpm clean && pnpm build"
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {
     "@ladybugdb/core": "^0.16.1",

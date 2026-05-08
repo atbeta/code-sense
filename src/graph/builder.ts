@@ -39,7 +39,7 @@ export async function buildGraph(
   await createSchema(graph, config);
 
   const scanned = await scanFiles(config, sourceRoot);
-  console.error(`[CodeSense] Scanned ${scanned.length} files`);
+
 
   const entities: EntityInstance[] = [];
   const frameworkAPIUsage: { fromFile: string; apiName: string; frameworkName: string }[] = [];
@@ -59,9 +59,7 @@ export async function buildGraph(
       config,
       frameworkAPIMap,
     );
-    if (!result) {
-      console.error(`[CodeSense] processFile returned null for: ${file.filePath}`);
-    } else {
+    if (result) {
       entities.push(result.entity);
       frameworkAPIUsage.push(...result.apiUsage);
 
@@ -114,11 +112,7 @@ export async function buildGraph(
 
   // Auto-detected imports
   const importEdges = await buildImportEdges(entities, sourceRoot);
-  if (entities.length > 0) {
-    console.error(`[CodeSense] First entity path: ${entities[0].filePath}`);
-    console.error(`[CodeSense] First entity imports: ${JSON.stringify((entities[0].properties._imports as any)?.slice(0, 2))}`);
-  }
-  console.error(`[CodeSense] buildImportEdges: ${importEdges.length} edges`);
+
   for (const edge of importEdges) {
     relations.push(edge);
     try {
@@ -985,6 +979,9 @@ async function buildRelationshipEdges(
   const fromEntities = entities.filter((e) => e.type === relDef.from);
   const toEntities = entities.filter((e) => e.type === relDef.to);
 
+
+  if (relType === 'route_to_component') {
+    }
   if (fromEntities.length === 0 || toEntities.length === 0) return [];
 
   const detectors = relDef.detect_by ?? [];
@@ -1021,11 +1018,13 @@ async function buildRelationshipEdges(
       const matches = detector.detect(ctx, {
         pattern: detectCfg.pattern,
       });
-
+      if (relType === 'matches_route') {
+            }
+    
       for (const match of matches) {
         for (const toEntity of toEntities) {
           if (matchMatchesEntity(match, toEntity, detectCfg.type)) {
-            relations.push({
+                      relations.push({
               type: relType,
               fromId: fromEntity.filePath,
               toId: toEntity.filePath,
@@ -1104,12 +1103,13 @@ function matchMatchesEntity(
   }
 
   if (detectorType === 'import_expression') {
-    const callee = String(match.callee ?? '').replace(/['"]/g, '');
-    if (callee) {
-      const basename = entityPath.split(sep).pop()?.toLowerCase() ?? '';
-      if (callee.toLowerCase().includes(basename) || basename.includes(callee.toLowerCase())) {
-        return true;
-      }
+    const rawPath = String(match.importPath ?? match.callee ?? '');
+    const importPath = rawPath.replace(/['"]/g, '');
+    if (importPath) {
+      const normalized = importPath.replace(/\\/g, '/');
+      const importName = normalized.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
+      const entityName = entityPath.split(sep).pop()?.replace(/\.[^.]+$/, '') ?? '';
+          return importName.toLowerCase() === entityName.toLowerCase();
     }
   }
 

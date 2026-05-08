@@ -31,7 +31,7 @@ export async function scanFiles(
       onlyFiles: true,
       ignore: ['**/node_modules/**'],
     });
-    console.error(`[file-scanner] entity=${entityType} patterns=${entityDef.patterns.join(',')} found=${files.length}`);
+
 
     for (const filePath of files) {
       if (seen.has(filePath)) continue;

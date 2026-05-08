@@ -55,7 +55,7 @@ const WASM_MAGIC = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
 
 /** Minimum expected WASM sizes (in bytes) for cursory validation */
 const EXPECTED_SIZES: Record<string, number> = {
-  'tree-sitter-javascript.wasm': 600_000,  // ~632KB
+  'tree-sitter-javascript.wasm': 600_000, // ~632KB
   'tree-sitter-typescript.wasm': 2_200_000, // ~2.2MB
 };
 
@@ -66,8 +66,8 @@ async function loadWasm(filePath: string, filename: string): Promise<Parser.Lang
   if (!buf.subarray(0, 4).equals(WASM_MAGIC)) {
     throw new Error(
       `[CodeSense] Invalid WASM file: ${filename} at ${filePath}\n` +
-      `  File does not start with WASM magic bytes (\\0asm).\n` +
-      `  The file may be corrupted. Try: npm ci --force && npx codesense index`,
+        `  File does not start with WASM magic bytes (\\0asm).\n` +
+        `  The file may be corrupted. Try: npm ci --force && npx codesense index`,
     );
   }
 
@@ -76,9 +76,9 @@ async function loadWasm(filePath: string, filename: string): Promise<Parser.Lang
   if (minSize && buf.length < minSize) {
     throw new Error(
       `[CodeSense] Truncated WASM file: ${filename}\n` +
-      `  Expected at least ${minSize} bytes, got ${buf.length} bytes.\n` +
-      `  The file was likely incompletely downloaded.\n` +
-      `  Fix: rm -rf node_modules/tree-sitter-wasms && npm install`,
+        `  Expected at least ${minSize} bytes, got ${buf.length} bytes.\n` +
+        `  The file was likely incompletely downloaded.\n` +
+        `  Fix: rm -rf node_modules/tree-sitter-wasms && npm install`,
     );
   }
 
@@ -89,21 +89,20 @@ async function loadWasm(filePath: string, filename: string): Promise<Parser.Lang
     if (msg.includes('WebAssembly') || msg.includes('CompileError')) {
       throw new Error(
         `[CodeSense] Failed to compile WASM: ${filename}\n` +
-        `  ${msg}\n` +
-        `  This usually means the WASM binary is corrupted or incompatible.\n` +
-        `  Fix: rm -rf node_modules/tree-sitter-wasms && npm install`,
+          `  ${msg}\n` +
+          `  This usually means the WASM binary is corrupted or incompatible.\n` +
+          `  Fix: rm -rf node_modules/tree-sitter-wasms && pnpm install`,
+        { cause: err },
       );
     }
-    throw err;
+    throw new Error(`Failed to load WASM: ${filename}`, { cause: err });
   }
 }
 
 export function getParser(lang?: SourceLanguage): Parser {
   const parser = lang === 'ts' ? tsParser : jsParser;
   if (!parser) {
-    throw new Error(
-      'Parser not initialized. Call initParser() first.',
-    );
+    throw new Error('Parser not initialized. Call initParser() first.');
   }
   return parser;
 }
@@ -125,11 +124,7 @@ export function parseSource(source: string, lang: SourceLanguage = 'js') {
 export type NodePredicate = (node: SyntaxNode) => boolean;
 export type NodeVisitor = (node: SyntaxNode) => void;
 
-export function walk(
-  root: SyntaxNode,
-  predicate: NodePredicate,
-  visitor: NodeVisitor,
-): void {
+export function walk(root: SyntaxNode, predicate: NodePredicate, visitor: NodeVisitor): void {
   const visited = new Set<number>();
 
   function visit(node: SyntaxNode): void {
@@ -148,10 +143,7 @@ export function walk(
   visit(root);
 }
 
-export function collect(
-  root: SyntaxNode,
-  predicate: NodePredicate,
-): SyntaxNode[] {
+export function collect(root: SyntaxNode, predicate: NodePredicate): SyntaxNode[] {
   const results: SyntaxNode[] = [];
   walk(root, predicate, (node) => results.push(node));
   return results;
@@ -159,17 +151,12 @@ export function collect(
 
 // === Common predicates ===
 
-export const isImportStatement: NodePredicate = (node) =>
-  node.type === 'import_statement';
+export const isImportStatement: NodePredicate = (node) => node.type === 'import_statement';
 
-export const isCallExpression: NodePredicate = (node) =>
-  node.type === 'call_expression';
+export const isCallExpression: NodePredicate = (node) => node.type === 'call_expression';
 
-export const isNewExpression: NodePredicate = (node) =>
-  node.type === 'new_expression';
+export const isNewExpression: NodePredicate = (node) => node.type === 'new_expression';
 
-export const isMemberExpression: NodePredicate = (node) =>
-  node.type === 'member_expression';
+export const isMemberExpression: NodePredicate = (node) => node.type === 'member_expression';
 
-export const isExportStatement: NodePredicate = (node) =>
-  node.type === 'export_statement';
+export const isExportStatement: NodePredicate = (node) => node.type === 'export_statement';

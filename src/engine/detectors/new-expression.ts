@@ -38,9 +38,7 @@ function extractConstructor(node: import('web-tree-sitter').SyntaxNode): string 
   return ctor?.text ?? '';
 }
 
-function extractArguments(
-  node: import('web-tree-sitter').SyntaxNode,
-): string[] {
+function extractArguments(node: import('web-tree-sitter').SyntaxNode): string[] {
   const argsNode = node.childForFieldName('arguments');
   if (!argsNode) return [];
   const args: string[] = [];

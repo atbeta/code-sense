@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
+import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import * as z from 'zod';
 import { dirname } from 'node:path';
@@ -48,7 +49,9 @@ export async function startMCPServer(
       inputSchema: z.object({
         filePath: z
           .string()
-          .describe('The file path of the entity (absolute or relative to current working directory)'),
+          .describe(
+            'The file path of the entity (absolute or relative to current working directory)',
+          ),
       }),
     },
     async ({ filePath }) => {
@@ -67,10 +70,7 @@ export async function startMCPServer(
         filePath: z
           .string()
           .describe('The file path of the entity to analyze as the epicenter of change'),
-        depth: z
-          .number()
-          .optional()
-          .describe('Maximum BFS traversal depth (default: 3, max: 5)'),
+        depth: z.number().optional().describe('Maximum BFS traversal depth (default: 3, max: 5)'),
       }),
     },
     async ({ filePath, depth }) => {
@@ -89,7 +89,9 @@ export async function startMCPServer(
         routePattern: z
           .string()
           .optional()
-          .describe('Optional filter: route path pattern, component name, or route file name to search for'),
+          .describe(
+            'Optional filter: route path pattern, component name, or route file name to search for',
+          ),
       }),
     },
     async ({ routePattern }) => {
@@ -107,7 +109,9 @@ export async function startMCPServer(
       inputSchema: z.object({
         symbolName: z
           .string()
-          .describe('The symbol name to trace, e.g. "userState", "useAuth", "mapState", "defineStore"'),
+          .describe(
+            'The symbol name to trace, e.g. "userState", "useAuth", "mapState", "defineStore"',
+          ),
       }),
     },
     async ({ symbolName }) => {
@@ -162,15 +166,21 @@ export async function startMCPServer(
         filePath: z
           .string()
           .optional()
-          .describe('Optional file path to diff against baseRef. If omitted, diffs the entire working tree.'),
+          .describe(
+            'Optional file path to diff against baseRef. If omitted, diffs the entire working tree.',
+          ),
         diffContent: z
           .string()
           .optional()
-          .describe('Optional raw git diff content. Use this to pass a pre-computed diff instead of running git.'),
+          .describe(
+            'Optional raw git diff content. Use this to pass a pre-computed diff instead of running git.',
+          ),
         baseRef: z
           .string()
           .optional()
-          .describe('Git reference to diff against (default: HEAD). e.g. "main", "origin/main", "HEAD~1"'),
+          .describe(
+            'Git reference to diff against (default: HEAD). e.g. "main", "origin/main", "HEAD~1"',
+          ),
       }),
     },
     async ({ filePath, diffContent, baseRef }) => {
@@ -188,15 +198,16 @@ export async function startMCPServer(
       inputSchema: z.object({
         query: z
           .string()
-          .describe('Natural language search query, e.g. "login handler", "auth validation", "dark mode toggle"'),
-        limit: z
-          .number()
-          .optional()
-          .describe('Maximum results to return (default: 15, max: 30)'),
+          .describe(
+            'Natural language search query, e.g. "login handler", "auth validation", "dark mode toggle"',
+          ),
+        limit: z.number().optional().describe('Maximum results to return (default: 15, max: 30)'),
         kind: z
           .string()
           .optional()
-          .describe('Optional filter by kind: function, method, composable_function, store_action, component, store, composable'),
+          .describe(
+            'Optional filter by kind: function, method, composable_function, store_action, component, store, composable',
+          ),
       }),
     },
     async ({ query, limit, kind }) => {
@@ -244,13 +255,13 @@ export async function startMCPServer(
 
     await server.connect(transport);
 
-    app.post('/mcp', async (req: any, res: any) => {
+    app.post('/mcp', async (req: Request, res: Response) => {
       await transport.handleRequest(req, res, req.body);
     });
-    app.get('/mcp', async (req: any, res: any) => {
+    app.get('/mcp', async (req: Request, res: Response) => {
       await transport.handleRequest(req, res);
     });
-    app.delete('/mcp', async (req: any, res: any) => {
+    app.delete('/mcp', async (req: Request, res: Response) => {
       await transport.handleRequest(req, res);
     });
 

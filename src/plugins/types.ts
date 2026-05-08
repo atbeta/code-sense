@@ -52,7 +52,12 @@ export interface EntityExtractionResult {
   /** Framework API usage found in this file */
   apiUsage: { fromFile: string; apiName: string; frameworkName: string }[];
   /** Store items (state/getters/actions/mutations) */
-  storeItems: { name: string; filePath: string; type: string; properties: Record<string, unknown> }[];
+  storeItems: {
+    name: string;
+    filePath: string;
+    type: string;
+    properties: Record<string, unknown>;
+  }[];
 }
 
 export interface FunctionExtractionContext {
@@ -68,7 +73,13 @@ export interface FunctionExtractionResult {
     name: string;
     filePath: string;
     entityPath: string;
-    kind: 'function' | 'method' | 'composable_function' | 'setup_function' | 'store_action' | 'store_mutation';
+    kind:
+      | 'function'
+      | 'method'
+      | 'composable_function'
+      | 'setup_function'
+      | 'store_action'
+      | 'store_mutation';
     startLine: number;
     endLine: number;
     content: string;

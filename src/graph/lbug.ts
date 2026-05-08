@@ -19,9 +19,7 @@ export class LbugGraph {
       getAll: () => Promise<unknown[]>;
       close: () => Promise<void>;
     };
-    const rows = (await qr.getAll()).map(
-      (row: unknown) => row as Record<string, unknown>,
-    );
+    const rows = (await qr.getAll()).map((row: unknown) => row as Record<string, unknown>);
     await qr.close();
     return rows;
   }
@@ -75,9 +73,7 @@ export class LbugGraph {
     `);
     if (existing.length > 0) return;
 
-    const propsStr = relProps
-      ? `{properties: ${escapeCypher(JSON.stringify(relProps))}}`
-      : '';
+    const propsStr = relProps ? `{properties: ${escapeCypher(JSON.stringify(relProps))}}` : '';
     await this.execute(`
       MATCH (a:Entity {filePath: ${escapeCypher(fromPath)}})
       MATCH (b:Entity {filePath: ${escapeCypher(toPath)}})

@@ -1,6 +1,8 @@
+/* eslint-disable no-useless-escape */
+
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
-import path, { sep } from 'node:path';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LbugGraph } from '../graph/lbug.js';
 import { graphToVis } from './adapter.js';
@@ -1003,7 +1005,10 @@ export function startVisServer(dbPath: string, port: number = 3456): Promise<voi
     const graph = new LbugGraph(dbPath);
 
     const sigmaPath = path.resolve(__dirname, '../../node_modules/sigma/dist/sigma.min.js');
-    const graphologyPath = path.resolve(__dirname, '../../node_modules/graphology/dist/graphology.umd.min.js');
+    const graphologyPath = path.resolve(
+      __dirname,
+      '../../node_modules/graphology/dist/graphology.umd.min.js',
+    );
 
     const sigmaJS = readFileSync(sigmaPath, 'utf-8');
     const graphologyJS = readFileSync(graphologyPath, 'utf-8');
@@ -1012,13 +1017,15 @@ export function startVisServer(dbPath: string, port: number = 3456): Promise<voi
       const url = req.url ?? '/';
 
       if (url === '/api/graph') {
-        graphToVis(graph).then((data) => {
-          res.writeHead(200, { 'Content-Type': MIME['.json'] });
-          res.end(JSON.stringify(data));
-        }).catch((err) => {
-          res.writeHead(500, { 'Content-Type': MIME['.json'] });
-          res.end(JSON.stringify({ error: String(err) }));
-        });
+        graphToVis(graph)
+          .then((data) => {
+            res.writeHead(200, { 'Content-Type': MIME['.json'] });
+            res.end(JSON.stringify(data));
+          })
+          .catch((err) => {
+            res.writeHead(500, { 'Content-Type': MIME['.json'] });
+            res.end(JSON.stringify({ error: String(err) }));
+          });
         return;
       }
 

@@ -42,11 +42,7 @@ function matchPattern(value: string, pattern: string): boolean {
   if (value === pattern) return true;
   if (pattern.includes('*')) {
     const regex = new RegExp(
-      '^' +
-        pattern
-          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          .replace(/\\\*/g, '.*') +
-        '$',
+      '^' + pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*') + '$',
     );
     return regex.test(value);
   }

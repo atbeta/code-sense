@@ -1,5 +1,3 @@
-import { rmSync } from 'node:fs';
-import { join } from 'node:path';
 import type { ResolvedConfig } from '../types/config.js';
 import type { LbugGraph } from './lbug.js';
 
@@ -8,10 +6,7 @@ import type { LbugGraph } from './lbug.js';
  * Since LadybugDB doesn't support CREATE TABLE IF NOT EXISTS,
  * we delete the existing database directory to start fresh.
  */
-export async function createSchema(
-  graph: LbugGraph,
-  config: ResolvedConfig,
-): Promise<void> {
+export async function createSchema(graph: LbugGraph, config: ResolvedConfig): Promise<void> {
   // Single node table for all entity types
   await graph.execute(`
     CREATE NODE TABLE Entity (
@@ -33,7 +28,7 @@ export async function createSchema(
 
   // Relationship tables for each config-defined relationship
   // Skip 'imports' since it's always auto-created above
-  for (const [relType, relDef] of Object.entries(config.relationships ?? {})) {
+  for (const [relType, _relDef] of Object.entries(config.relationships ?? {})) {
     if (relType === 'imports') continue;
     await graph.execute(`
       CREATE REL TABLE ${relType} (

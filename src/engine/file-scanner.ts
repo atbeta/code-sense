@@ -1,5 +1,5 @@
 import fg from 'fast-glob';
-import { resolve, sep } from 'node:path';
+import { sep } from 'node:path';
 import { statSync } from 'node:fs';
 import type { EntityDefinition, ResolvedConfig } from '../types/config.js';
 
@@ -21,9 +21,7 @@ export async function scanFiles(
   const results: ScannedFile[] = [];
   const seen = new Set<string>();
 
-  for (const [entityType, entityDef] of Object.entries(
-    config.all_entities,
-  )) {
+  for (const [entityType, entityDef] of Object.entries(config.all_entities)) {
     // Patterns are relative to sourceRoot, pass cwd to fast-glob for correct cross-platform globs
     const files = await fg(entityDef.patterns, {
       cwd: sourceRoot,
@@ -31,7 +29,6 @@ export async function scanFiles(
       onlyFiles: true,
       ignore: ['**/node_modules/**'],
     });
-
 
     for (const filePath of files) {
       if (seen.has(filePath)) continue;

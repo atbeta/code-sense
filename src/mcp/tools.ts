@@ -44,7 +44,15 @@ export async function entityContext(
   }
 
   // Show key properties first
-  const priorityKeys = ['name', 'variant', 'apiMode', 'usesStore', 'usesComposables', 'isVue', 'isRouter'];
+  const priorityKeys = [
+    'name',
+    'variant',
+    'apiMode',
+    'usesStore',
+    'usesComposables',
+    'isVue',
+    'isRouter',
+  ];
   const shown = new Set<string>();
   for (const key of priorityKeys) {
     if (props[key] !== undefined && !key.startsWith('_')) {
@@ -74,7 +82,9 @@ export async function entityContext(
     parts.push('');
     parts.push('### Store Internals');
     for (const [itemType, names] of Object.entries(byType)) {
-      parts.push(`- **${itemType}** (${names.length}): ${names.slice(0, 20).join(', ')}${names.length > 20 ? '...' : ''}`);
+      parts.push(
+        `- **${itemType}** (${names.length}): ${names.slice(0, 20).join(', ')}${names.length > 20 ? '...' : ''}`,
+      );
     }
   }
 
@@ -102,7 +112,10 @@ export async function entityContext(
       const row = r as Record<string, unknown>;
       return row.name as string;
     });
-    parts.push(apiNames.slice(0, 30).join(', ') + (apiNames.length > 30 ? `... (+${apiNames.length - 30} more)` : ''));
+    parts.push(
+      apiNames.slice(0, 30).join(', ') +
+        (apiNames.length > 30 ? `... (+${apiNames.length - 30} more)` : ''),
+    );
   }
 
   // Outgoing relations with evidence
@@ -117,7 +130,9 @@ export async function entityContext(
       const rel = r.r as Record<string, unknown> | undefined;
       const relType = rel?._label ?? '?';
       const targetRel = relative(process.cwd(), (r.targetPath as string) || '');
-      parts.push(`- \`${relType}\` → **${r.targetName ?? r.targetPath}** (${r.targetType ?? 'entity'}) \`${targetRel}\``);
+      parts.push(
+        `- \`${relType}\` → **${r.targetName ?? r.targetPath}** (${r.targetType ?? 'entity'}) \`${targetRel}\``,
+      );
     }
   }
 
@@ -133,7 +148,9 @@ export async function entityContext(
       const rel = r.r as Record<string, unknown> | undefined;
       const relType = rel?._label ?? '?';
       const sourceRel = relative(process.cwd(), (r.sourcePath as string) || '');
-      parts.push(`- **${r.sourceName ?? r.sourcePath}** (${r.sourceType ?? 'entity'}) \`${sourceRel}\` → \`${relType}\``);
+      parts.push(
+        `- **${r.sourceName ?? r.sourcePath}** (${r.sourceType ?? 'entity'}) \`${sourceRel}\` → \`${relType}\``,
+      );
     }
   }
 
@@ -253,7 +270,9 @@ export async function impactAnalysis(
     parts.push(`### Depth ${d} (${level.length} entities)`);
     for (const imp of level) {
       const indent = '  '.repeat(d);
-      parts.push(`${indent}- [${imp.relationPath[imp.relationPath.length - 1] || '?'}] → \`${imp.relPath}\``);
+      parts.push(
+        `${indent}- [${imp.relationPath[imp.relationPath.length - 1] || '?'}] → \`${imp.relPath}\``,
+      );
     }
   }
 
@@ -307,7 +326,9 @@ export async function routeMap(
 
       if (routeProps.routes && Array.isArray(routeProps.routes)) {
         for (const route of routeProps.routes as Array<Record<string, unknown>>) {
-          parts.push(`- \`${route.path ?? '?'}\` (${route.name ?? 'unnamed'}) → **${r.componentName ?? compRel}** \`${compRel}\``);
+          parts.push(
+            `- \`${route.path ?? '?'}\` (${route.name ?? 'unnamed'}) → **${r.componentName ?? compRel}** \`${compRel}\``,
+          );
         }
       } else {
         parts.push(`- \`${relType}\` → **${r.componentName ?? compRel}** \`${compRel}\``);
@@ -409,7 +430,9 @@ export async function findEntrypoints(ctx: ToolContext): Promise<string> {
       const props = parseProps(r.props);
 
       if (props.routes && Array.isArray(props.routes)) {
-        parts.push(`- **${r.name ?? rel}** \`${rel}\` (${(props.routes as unknown[]).length} routes defined)`);
+        parts.push(
+          `- **${r.name ?? rel}** \`${rel}\` (${(props.routes as unknown[]).length} routes defined)`,
+        );
         for (const route of props.routes as Array<Record<string, unknown>>) {
           parts.push(`  - \`${route.path ?? '?'}\` → \`${route.component ?? '?'}\``);
         }
@@ -428,8 +451,12 @@ export async function findEntrypoints(ctx: ToolContext): Promise<string> {
     const r = row as Record<string, unknown>;
     const rel = relative(process.cwd(), (r.filePath as string) || '') || '';
     // Heuristic: components in views/, pages/, or named App.* are likely entry points
-    return rel.includes(sep + 'views' + sep) || rel.includes(sep + 'pages' + sep) ||
-      rel.toLowerCase().includes('app.vue') || rel.toLowerCase().includes('main');
+    return (
+      rel.includes(sep + 'views' + sep) ||
+      rel.includes(sep + 'pages' + sep) ||
+      rel.toLowerCase().includes('app.vue') ||
+      rel.toLowerCase().includes('main')
+    );
   });
 
   if (entryComponents.length > 0) {
@@ -476,10 +503,7 @@ export async function findEntrypoints(ctx: ToolContext): Promise<string> {
 
 // ===== cypher (debug tool) =====
 
-export async function cypher(
-  ctx: ToolContext,
-  params: { query: string },
-): Promise<string> {
+export async function cypher(ctx: ToolContext, params: { query: string }): Promise<string> {
   try {
     const rows = await ctx.graph.query(params.query);
     return JSON.stringify(rows, null, 2);
@@ -618,10 +642,7 @@ export async function functionContext(
 
   // If multiple matches, show summary first then detail for first
   if (rows.length > 1 && !filePath) {
-    const parts: string[] = [
-      `## Function \`${name}\` (${rows.length} matches)`,
-      '',
-    ];
+    const parts: string[] = [`## Function \`${name}\` (${rows.length} matches)`, ''];
     for (const row of rows) {
       const r = row as Record<string, unknown>;
       const f = r.f as Record<string, unknown>;
@@ -698,33 +719,30 @@ export async function diffImpact(
   params: { filePath?: string; diffContent?: string; baseRef?: string },
 ): Promise<string> {
   let diffText: string;
-  let targetFile: string;
 
   if (params.diffContent) {
     diffText = params.diffContent;
-    // Try to extract file path from diff header
-    const headerMatch = diffText.match(/^diff --git a\/(.+?) b\/(.+?)$/m);
-    targetFile = headerMatch ? headerMatch[2] : '';
   } else if (params.filePath) {
     const baseRef = params.baseRef ?? 'HEAD';
-    const sourceRoot = ctx.config.project.source_root;
     // Resolve: if filePath is relative to source_root, construct the git path
     const gitFilePath = params.filePath;
     try {
-      diffText = execSync(
-        `git diff ${baseRef} -- "${gitFilePath}"`,
-        { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, cwd: process.cwd() },
-      );
+      diffText = execSync(`git diff ${baseRef} -- "${gitFilePath}"`, {
+        encoding: 'utf-8',
+        maxBuffer: 10 * 1024 * 1024,
+        cwd: process.cwd(),
+      });
     } catch {
       return `Failed to run git diff on ${params.filePath}. Make sure this is a git repository.`;
     }
   } else {
     const baseRef = params.baseRef ?? 'HEAD';
     try {
-      diffText = execSync(
-        `git diff ${baseRef}`,
-        { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, cwd: process.cwd() },
-      );
+      diffText = execSync(`git diff ${baseRef}`, {
+        encoding: 'utf-8',
+        maxBuffer: 10 * 1024 * 1024,
+        cwd: process.cwd(),
+      });
     } catch {
       return 'Failed to run git diff. Make sure this is a git repository.';
     }
@@ -741,7 +759,6 @@ export async function diffImpact(
   }
   const fileChanges: Map<string, FileChange> = new Map();
 
-  const fileHeaderRe = /^diff --git a\/(.+?) b\/(.+?)$/m;
   const hunkHeaderRe = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
   let currentFile = '';
@@ -789,7 +806,10 @@ export async function diffImpact(
   const seen = new Set<string>();
 
   for (const [filePath, change] of fileChanges) {
-    const relPath = relative(ctx.config.project.source_root, filePath) || relative(process.cwd(), filePath) || filePath;
+    const relPath =
+      relative(ctx.config.project.source_root, filePath) ||
+      relative(process.cwd(), filePath) ||
+      filePath;
 
     // Find functions in this file whose line ranges overlap with changed ranges
     const funcRows = await ctx.graph.query(
@@ -914,31 +934,15 @@ export async function diffImpact(
     }
 
     parts.push('');
-    parts.push(`**Summary**: ${allImpacts.length} function(s) directly changed, ${traced.size - allImpacts.length} impacted downstream across ${impactedFiles.size} file(s).`);
+    parts.push(
+      `**Summary**: ${allImpacts.length} function(s) directly changed, ${traced.size - allImpacts.length} impacted downstream across ${impactedFiles.size} file(s).`,
+    );
   }
 
   return parts.join('\n');
 }
 
 // ===== semantic_search =====
-
-interface SearchIndex {
-  functions: Array<{
-    id: string;
-    name: string;
-    kind: string;
-    filePath: string;
-    startLine: number;
-    tokens: string[];
-    snippet: string;
-  }>;
-  entities: Array<{
-    filePath: string;
-    name: string;
-    entityType: string;
-    tokens: string[];
-  }>;
-}
 
 function tokenizeCode(text: string): string[] {
   // Code-aware tokenization: split on camelCase, PascalCase, snake_case, kebab-case
@@ -948,7 +952,10 @@ function tokenizeCode(text: string): string[] {
   for (const word of words) {
     if (!word || word.length < 2) continue;
     // Split camelCase: loadUserProfile → load, User, Profile
-    const subTokens = word.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').split(/\s+/);
+    const subTokens = word
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+      .split(/\s+/);
     for (const t of subTokens) {
       const lower = t.toLowerCase();
       if (lower.length >= 2 && !/^[0-9_$]+$/.test(lower)) {
@@ -1064,8 +1071,12 @@ export async function semanticSearch(
     let propsText = '';
     try {
       const props = JSON.parse((r.props as string) || '{}');
-      propsText = Object.values(props).filter(v => typeof v === 'string').join(' ');
-    } catch { /* ignore */ }
+      propsText = Object.values(props)
+        .filter((v) => typeof v === 'string')
+        .join(' ');
+    } catch {
+      /* ignore */
+    }
 
     const fullText = name + ' ' + entityType + ' ' + propsText;
     const tokens = tokenizeCode(fullText);
@@ -1087,7 +1098,7 @@ export async function semanticSearch(
   }
 
   // Score documents
-  const scored = docs.map(doc => ({
+  const scored = docs.map((doc) => ({
     ...doc,
     score: computeTFIDF(queryTokens, doc.fullTokens, docFreq, docs.length),
   }));
@@ -1103,7 +1114,7 @@ export async function semanticSearch(
   scored.sort((a, b) => b.score - a.score);
 
   const limit = Math.min(params.limit ?? 15, 30);
-  const top = scored.filter(s => s.score > 0).slice(0, limit);
+  const top = scored.filter((s) => s.score > 0).slice(0, limit);
 
   if (top.length === 0) {
     // If kind filter is set and no results matched, fall back to listing by kind
@@ -1114,7 +1125,8 @@ export async function semanticSearch(
       if (kindRows.length > 0) {
         const parts: string[] = [
           `## 🔍 Semantic Search: "${queryStr}" (filtered by kind: ${params.kind})`,
-          `No semantic matches. Showing ${kindRows.length} ${params.kind}(s):`, '',
+          `No semantic matches. Showing ${kindRows.length} ${params.kind}(s):`,
+          '',
         ];
         for (let i = 0; i < kindRows.length; i++) {
           const r = kindRows[i] as Record<string, unknown>;
@@ -1133,7 +1145,8 @@ export async function semanticSearch(
 
   const parts: string[] = [
     `## 🔍 Semantic Search: "${queryStr}"`,
-    `Found ${top.length} results:`, '',
+    `Found ${top.length} results:`,
+    '',
   ];
 
   for (let i = 0; i < top.length; i++) {
@@ -1161,11 +1174,13 @@ function formatProp(value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
   if (Array.isArray(value)) {
-    const formatted = value.map(v => {
+    const formatted = value.map((v) => {
       if (typeof v === 'object' && v !== null) return JSON.stringify(v);
       return String(v);
     });
-    return formatted.slice(0, 10).join(', ') + (value.length > 10 ? `... (+${value.length - 10})` : '');
+    return (
+      formatted.slice(0, 10).join(', ') + (value.length > 10 ? `... (+${value.length - 10})` : '')
+    );
   }
   if (typeof value === 'object') return JSON.stringify(value).substring(0, 100);
   return String(value);

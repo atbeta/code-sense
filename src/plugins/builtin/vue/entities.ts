@@ -4,7 +4,11 @@
  * Declares entity types, framework APIs, and relationships
  * that the Vue plugin contributes to the graph engine.
  */
-import type { EntityDefinition, FrameworkAPI, RelationshipDefinition } from '../../../types/config.js';
+import type {
+  EntityDefinition,
+  FrameworkAPI,
+  RelationshipDefinition,
+} from '../../../types/config.js';
 
 export const VUE_ENTITIES: Record<string, EntityDefinition> = {
   component: {
@@ -15,10 +19,7 @@ export const VUE_ENTITIES: Record<string, EntityDefinition> = {
       { name: 'category', extract: 'file_category' },
       { name: 'isVue', extract: 'literal:true' },
     ],
-    markers: [
-      { uses_options_api: false },
-      { naming_pattern: '*.vue' },
-    ],
+    markers: [{ uses_options_api: false }, { naming_pattern: '*.vue' }],
     description: 'Vue single-file component',
   },
 
@@ -44,12 +45,7 @@ export const VUE_ENTITIES: Record<string, EntityDefinition> = {
   },
 
   route: {
-    patterns: [
-      'router/**/*.ts',
-      'router/**/*.js',
-      'routes/**/*.ts',
-      'routes/**/*.js',
-    ],
+    patterns: ['router/**/*.ts', 'router/**/*.js', 'routes/**/*.ts', 'routes/**/*.js'],
     properties: [
       { name: 'name', extract: 'file_name' },
       { name: 'filePath', extract: 'file_path' },
@@ -94,35 +90,76 @@ export const VUE_FRAMEWORK_APIS: FrameworkAPI[] = [
     name: 'vue',
     sources: ['vue', 'vue/dist/vue.esm-bundler.js'],
     api_list: [
-      'ref', 'reactive', 'computed', 'watch', 'watchEffect',
-      'onMounted', 'onUnmounted', 'onBeforeMount', 'onBeforeUnmount',
-      'onUpdated', 'onBeforeUpdate', 'onActivated', 'onDeactivated',
-      'provide', 'inject', 'defineComponent', 'defineAsyncComponent',
-      'nextTick', 'shallowRef', 'shallowReactive', 'toRef', 'toRefs',
-      'isRef', 'unref', 'triggerRef', 'customRef',
-      'markRaw', 'toRaw', 'readonly', 'shallowReadonly',
-      'useCssModule', 'useCssVars', 'useSlots', 'useAttrs',
+      'ref',
+      'reactive',
+      'computed',
+      'watch',
+      'watchEffect',
+      'onMounted',
+      'onUnmounted',
+      'onBeforeMount',
+      'onBeforeUnmount',
+      'onUpdated',
+      'onBeforeUpdate',
+      'onActivated',
+      'onDeactivated',
+      'provide',
+      'inject',
+      'defineComponent',
+      'defineAsyncComponent',
+      'nextTick',
+      'shallowRef',
+      'shallowReactive',
+      'toRef',
+      'toRefs',
+      'isRef',
+      'unref',
+      'triggerRef',
+      'customRef',
+      'markRaw',
+      'toRaw',
+      'readonly',
+      'shallowReadonly',
+      'useCssModule',
+      'useCssVars',
+      'useSlots',
+      'useAttrs',
     ],
     compiler_macros: [
-      'defineProps', 'defineEmits', 'defineExpose', 'defineOptions',
-      'defineSlots', 'defineModel', 'withDefaults',
+      'defineProps',
+      'defineEmits',
+      'defineExpose',
+      'defineOptions',
+      'defineSlots',
+      'defineModel',
+      'withDefaults',
     ],
   },
   {
     name: 'vue-router',
     sources: ['vue-router'],
     api_list: [
-      'createRouter', 'createWebHistory', 'createWebHashHistory',
-      'createMemoryHistory', 'useRouter', 'useRoute',
-      'onBeforeRouteUpdate', 'onBeforeRouteLeave',
+      'createRouter',
+      'createWebHistory',
+      'createWebHashHistory',
+      'createMemoryHistory',
+      'useRouter',
+      'useRoute',
+      'onBeforeRouteUpdate',
+      'onBeforeRouteLeave',
     ],
   },
   {
     name: 'pinia',
     sources: ['pinia'],
     api_list: [
-      'defineStore', 'createPinia', 'useStore', 'storeToRefs',
-      'setActivePinia', 'getActivePinia', 'setMapStoreSuffix',
+      'defineStore',
+      'createPinia',
+      'useStore',
+      'storeToRefs',
+      'setActivePinia',
+      'getActivePinia',
+      'setMapStoreSuffix',
     ],
   },
 ];
@@ -145,9 +182,7 @@ export const VUE_RELATIONSHIPS: Record<string, RelationshipDefinition> = {
     description: 'Route definition references a component',
     from: 'route',
     to: 'component',
-    detect_by: [
-      { type: 'import_statement', pattern: '\\.vue$' },
-    ],
+    detect_by: [{ type: 'import_statement', pattern: '\\.vue$' }],
   },
 
   defines_composable: {

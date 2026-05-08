@@ -6,3 +6,21 @@ dist/
 *.lbug
 .ai/
 test-kuzu-types
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Coverage
+coverage/
+
+

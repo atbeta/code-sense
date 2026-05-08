@@ -13,7 +13,7 @@
 import type { SyntaxNode } from 'web-tree-sitter';
 import type { EntityExtractionContext, EntityExtractionResult } from '../../types.js';
 import { parseSFC, extractScriptContent } from '../../../engine/sfc-parser.js';
-import { parseSource, collect, detectLanguage } from '../../../engine/ast-traverser.js';
+import { parseSource, collect } from '../../../engine/ast-traverser.js';
 
 // ── Public API ──
 
@@ -23,7 +23,7 @@ export function extractVueEntity(ctx: EntityExtractionContext): EntityExtraction
   const storeItems: EntityExtractionResult['storeItems'] = [];
 
   let astRoot = ctx.astRoot;
-  let sfc: ReturnType<typeof parseSFC> | null = null;
+  let sfc: ReturnType<typeof parseSFC> | null;
 
   // SFC parsing for .vue files
   if (ctx.filePath.endsWith('.vue')) {
@@ -32,7 +32,10 @@ export function extractVueEntity(ctx: EntityExtractionContext): EntityExtraction
     props.usesScriptSetup = sfc.usesScriptSetup;
 
     if (sfc.mainScript) {
-      const scriptLang = sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'") ? 'ts' as const : 'js';
+      const scriptLang =
+        sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'")
+          ? ('ts' as const)
+          : 'js';
       const scriptContent = extractScriptContent(sfc.mainScript);
       const tree = parseSource(scriptContent, scriptLang);
       astRoot = tree.rootNode;
@@ -85,7 +88,10 @@ function detectApiMode(root: SyntaxNode): string {
 // ── Component Name ──
 
 function extractComponentName(root: SyntaxNode, props: Record<string, unknown>): void {
-  const exportNodes = collect(root, (n) => n.type === 'export_statement' && n.text.includes('default'));
+  const exportNodes = collect(
+    root,
+    (n) => n.type === 'export_statement' && n.text.includes('default'),
+  );
   for (const node of exportNodes) {
     for (const child of node.namedChildren) {
       if (child.type === 'object' || child.type === 'object_literal') {
@@ -146,8 +152,7 @@ function detectComposableUsage(root: SyntaxNode, props: Record<string, unknown>)
   const useCalls = collect(
     root,
     (n) =>
-      n.type === 'call_expression' &&
-      /^use[A-Z]/.test(n.childForFieldName('function')?.text ?? ''),
+      n.type === 'call_expression' && /^use[A-Z]/.test(n.childForFieldName('function')?.text ?? ''),
   );
   if (useCalls.length > 0) {
     props.usesComposables = true;
@@ -279,7 +284,11 @@ function extractSetupStoreReturn(
         const valText = value.text;
         if (valText.startsWith('ref(') || valText.startsWith('reactive(')) result.state.push(key);
         else if (valText.startsWith('computed(')) result.getters.push(key);
-        else if (value.type === 'identifier' || value.type === 'call_expression' || value.type === 'arrow_function') {
+        else if (
+          value.type === 'identifier' ||
+          value.type === 'call_expression' ||
+          value.type === 'arrow_function'
+        ) {
           result.actions.push(key);
         }
       }
@@ -288,25 +297,36 @@ function extractSetupStoreReturn(
 }
 
 function isSetupStoreRef(name: string, bodyNode: SyntaxNode): boolean {
-  return collect(bodyNode, (n) =>
-    (n.type === 'variable_declarator' || n.type === 'lexical_declaration') &&
-    n.text.includes(name) &&
-    (n.text.includes('ref(') || n.text.includes('reactive(')),
-  ).length > 0;
+  return (
+    collect(
+      bodyNode,
+      (n) =>
+        (n.type === 'variable_declarator' || n.type === 'lexical_declaration') &&
+        n.text.includes(name) &&
+        (n.text.includes('ref(') || n.text.includes('reactive(')),
+    ).length > 0
+  );
 }
 
 function isSetupStoreComputed(name: string, bodyNode: SyntaxNode): boolean {
-  return collect(bodyNode, (n) =>
-    (n.type === 'variable_declarator' || n.type === 'lexical_declaration') &&
-    n.text.includes(name) &&
-    n.text.includes('computed('),
-  ).length > 0;
+  return (
+    collect(
+      bodyNode,
+      (n) =>
+        (n.type === 'variable_declarator' || n.type === 'lexical_declaration') &&
+        n.text.includes(name) &&
+        n.text.includes('computed('),
+    ).length > 0
+  );
 }
 
 function isSetupStoreFunction(name: string, bodyNode: SyntaxNode): boolean {
-  return collect(bodyNode, (n) =>
-    n.type === 'function_declaration' && n.childForFieldName('name')?.text === name,
-  ).length > 0;
+  return (
+    collect(
+      bodyNode,
+      (n) => n.type === 'function_declaration' && n.childForFieldName('name')?.text === name,
+    ).length > 0
+  );
 }
 
 function extractObjectKeys(objNode: SyntaxNode, result: StoreInternals): void {
@@ -343,9 +363,17 @@ function extractObjectPropertyKeys(objNode: SyntaxNode): string[] {
 }
 
 function detectStoreVariant(root: SyntaxNode, props: Record<string, unknown>): void {
-  if (collect(root, (n) => n.type === 'call_expression' && n.childForFieldName('function')?.text === 'defineStore').length > 0) {
+  if (
+    collect(
+      root,
+      (n) =>
+        n.type === 'call_expression' && n.childForFieldName('function')?.text === 'defineStore',
+    ).length > 0
+  ) {
     props.variant = 'pinia';
-  } else if (collect(root, (n) => n.type === 'new_expression' && n.text.includes('Store')).length > 0) {
+  } else if (
+    collect(root, (n) => n.type === 'new_expression' && n.text.includes('Store')).length > 0
+  ) {
     props.variant = 'vuex';
   }
 }
@@ -358,7 +386,7 @@ function detectRouter(root: SyntaxNode, props: Record<string, unknown>): void {
     (n) =>
       n.type === 'call_expression' &&
       (n.childForFieldName('function')?.text === 'createRouter' ||
-       n.childForFieldName('function')?.text === 'new VueRouter'),
+        n.childForFieldName('function')?.text === 'new VueRouter'),
   );
   if (routeDefs.length > 0) {
     props.isRouter = true;
@@ -466,9 +494,12 @@ function applyMarkers(
     if (marker.uses_options_api !== undefined && sfc) {
       props.usesOptionsAPI = marker.uses_options_api;
       const scriptContent = sfc.mainScript ? extractScriptContent(sfc.mainScript) : '';
-      const scriptLang = sfc.mainScript?.attrs.includes('lang="ts"') || sfc.mainScript?.attrs.includes("lang='ts'")
-        ? 'ts' as const : 'js';
-      const isOptions = detectApiMode(parseSource(scriptContent, scriptLang).rootNode) === 'options';
+      const scriptLang =
+        sfc.mainScript?.attrs.includes('lang="ts"') || sfc.mainScript?.attrs.includes("lang='ts'")
+          ? ('ts' as const)
+          : 'js';
+      const isOptions =
+        detectApiMode(parseSource(scriptContent, scriptLang).rootNode) === 'options';
       if (marker.uses_options_api && isOptions) {
         props.markedAsOptionsAPI = true;
       }

@@ -19,8 +19,7 @@ export const ImportExpressionDetector: Detector = {
     const callNodes = collect(
       ctx.root,
       (node) =>
-        node.type === 'call_expression' &&
-        node.childForFieldName('function')?.text === 'import',
+        node.type === 'call_expression' && node.childForFieldName('function')?.text === 'import',
     );
 
     for (const node of callNodes) {

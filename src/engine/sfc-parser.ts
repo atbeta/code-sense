@@ -18,8 +18,7 @@ export interface ParsedSFC {
 }
 
 // Matches <template>, <script ...>, <script setup ...>, <style ...> blocks
-const BLOCK_RE =
-  /<(\/?(template|script|style)\b)((?:\s[^>]*)?)>/gi;
+const BLOCK_RE = /<(\/?(template|script|style)\b)((?:\s[^>]*)?)>/gi;
 
 export function parseSFC(source: string, filePath: string): ParsedSFC {
   const blocks: SFCBlock[] = [];
@@ -70,9 +69,7 @@ export function parseSFC(source: string, filePath: string): ParsedSFC {
   }
 
   const mainScript =
-    blocks.find((b) => b.type === 'scriptSetup') ??
-    blocks.find((b) => b.type === 'script') ??
-    null;
+    blocks.find((b) => b.type === 'scriptSetup') ?? blocks.find((b) => b.type === 'script') ?? null;
 
   return {
     filePath,

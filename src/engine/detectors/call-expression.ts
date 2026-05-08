@@ -52,16 +52,12 @@ function extractCallee(node: import('web-tree-sitter').SyntaxNode): string {
   return '';
 }
 
-function getFullCalleeText(
-  node: import('web-tree-sitter').SyntaxNode,
-): string {
+function getFullCalleeText(node: import('web-tree-sitter').SyntaxNode): string {
   const funcNode = node.childForFieldName('function');
   return funcNode?.text ?? '';
 }
 
-function extractArguments(
-  node: import('web-tree-sitter').SyntaxNode,
-): string[] {
+function extractArguments(node: import('web-tree-sitter').SyntaxNode): string[] {
   const argsNode = node.childForFieldName('arguments');
   if (!argsNode) return [];
   const args: string[] = [];
@@ -79,9 +75,7 @@ function matchCalleePattern(callee: string, pattern: string): boolean {
 
   // Glob-like matching: use*Store matches useFooStore, useBarStore
   if (pattern.includes('*')) {
-    const regex = new RegExp(
-      '^' + pattern.replace(/\*/g, '.*') + '$',
-    );
+    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
     return regex.test(callee);
   }
 

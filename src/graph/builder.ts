@@ -24,7 +24,13 @@ export interface FunctionDef {
   name: string;
   filePath: string;
   entityPath: string;
-  kind: 'function' | 'method' | 'composable_function' | 'setup_function' | 'store_action' | 'store_mutation';
+  kind:
+    | 'function'
+    | 'method'
+    | 'composable_function'
+    | 'setup_function'
+    | 'store_action'
+    | 'store_mutation';
   startLine: number;
   endLine: number;
   content: string;
@@ -65,8 +71,16 @@ export async function buildGraph(
   }
 
   // Clean existing database for fresh rebuild
-  try { rmSync(dbPath, { recursive: true, force: true }); } catch { /* ignore */ }
-  try { rmSync(dbPath + '.wal', { force: true }); } catch { /* ignore */ }
+  try {
+    rmSync(dbPath, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+  try {
+    rmSync(dbPath + '.wal', { force: true });
+  } catch {
+    /* ignore */
+  }
 
   const graph = new LbugGraph(dbPath);
   await createSchema(graph, mergedConfig);
@@ -86,12 +100,7 @@ export async function buildGraph(
   }
 
   for (const file of scanned) {
-    const result = await processFile(
-      file.filePath,
-      file.entityType,
-      mergedConfig,
-      frameworkAPIMap,
-    );
+    const result = await processFile(file.filePath, file.entityType, mergedConfig, frameworkAPIMap);
     if (result) {
       entities.push(result.entity);
       functions.push(...result.functions);
@@ -122,7 +131,9 @@ export async function buildGraph(
     for (const apiName of fw.api_list) {
       try {
         await graph.execute(`CREATE (fw:FrameworkAPI {name: '${escapeStr(apiName)}'})`);
-      } catch { /* node may already exist */ }
+      } catch {
+        /* node may already exist */
+      }
     }
   }
 
@@ -132,7 +143,9 @@ export async function buildGraph(
       await graph.execute(
         `MATCH (a:Entity {filePath: '${escapeStr(usage.fromFile)}'}) MATCH (b:FrameworkAPI {name: '${escapeStr(usage.apiName)}'}) CREATE (a)-[:USES_API]->(b)`,
       );
-    } catch { /* target may not exist */ }
+    } catch {
+      /* target may not exist */
+    }
   }
 
   const relations: RelationInstance[] = [];
@@ -143,8 +156,11 @@ export async function buildGraph(
     const relEdges = await buildRelationshipEdges(relType, relDef, entities, mergedConfig);
     for (const edge of relEdges) {
       relations.push(edge);
-      try { await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties); }
-      catch { /* target may not exist */ }
+      try {
+        await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties);
+      } catch {
+        /* target may not exist */
+      }
     }
   }
 
@@ -152,8 +168,11 @@ export async function buildGraph(
   const importEdges = await buildImportEdges(entities, sourceRoot);
   for (const edge of importEdges) {
     relations.push(edge);
-    try { await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties); }
-    catch { /* target may not exist */ }
+    try {
+      await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties);
+    } catch {
+      /* target may not exist */
+    }
   }
 
   // Index package.json
@@ -173,7 +192,20 @@ export async function buildGraph(
         pkgInfo.hasVueDemi = 'vue-demi' in deps;
         pkgInfo.frameworkDeps = Object.entries(deps)
           .filter(([name]) =>
-            ['vue', 'vue-demi', 'vuex', 'pinia', 'vue-router', 'vite', 'nuxt', 'quasar', 'vuetify', 'element-plus', 'ant-design-vue', 'naive-ui'].includes(name),
+            [
+              'vue',
+              'vue-demi',
+              'vuex',
+              'pinia',
+              'vue-router',
+              'vite',
+              'nuxt',
+              'quasar',
+              'vuetify',
+              'element-plus',
+              'ant-design-vue',
+              'naive-ui',
+            ].includes(name),
           )
           .reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {});
       }
@@ -182,9 +214,11 @@ export async function buildGraph(
         pkgInfo.hasTest = 'test' in (pkg.scripts as Record<string, string>);
       }
       await graph.execute(
-        `CREATE (pkg:Entity {name: '${escapeStr(pkgInfo.name as string || 'unknown')}', filePath: '${escapeStr(packageJsonPath)}', entityType: 'package', properties: '${escapeStr(JSON.stringify(pkgInfo))}'})`,
+        `CREATE (pkg:Entity {name: '${escapeStr((pkgInfo.name as string) || 'unknown')}', filePath: '${escapeStr(packageJsonPath)}', entityType: 'package', properties: '${escapeStr(JSON.stringify(pkgInfo))}'})`,
       );
-    } catch { /* ignore invalid package.json */ }
+    } catch {
+      /* ignore invalid package.json */
+    }
   }
 
   // Write Function nodes
@@ -196,7 +230,9 @@ export async function buildGraph(
       await graph.execute(
         `MATCH (e:Entity {filePath: '${escapeStr(fn.entityPath)}'}) MATCH (f:Function {id: '${escapeStr(fn.id)}'}) CREATE (e)-[:defines]->(f)`,
       );
-    } catch { /* may already exist */ }
+    } catch {
+      /* may already exist */
+    }
   }
 
   // Build CALLS edges between functions
@@ -215,7 +251,39 @@ export async function buildGraph(
       const called: Set<string> = new Set();
       while ((match = callPattern.exec(caller.content)) !== null) {
         const calledName = match[1];
-        if (['if', 'switch', 'for', 'while', 'return', 'throw', 'typeof', 'instanceof', 'new', 'import', 'export', 'require', 'console', 'JSON', 'Math', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Promise', 'Map', 'Set', 'Ref', 'ComputedRef', 'parseInt', 'parseFloat', 'isNaN'].includes(calledName)) continue;
+        if (
+          [
+            'if',
+            'switch',
+            'for',
+            'while',
+            'return',
+            'throw',
+            'typeof',
+            'instanceof',
+            'new',
+            'import',
+            'export',
+            'require',
+            'console',
+            'JSON',
+            'Math',
+            'Object',
+            'Array',
+            'String',
+            'Number',
+            'Boolean',
+            'Promise',
+            'Map',
+            'Set',
+            'Ref',
+            'ComputedRef',
+            'parseInt',
+            'parseFloat',
+            'isNaN',
+          ].includes(calledName)
+        )
+          continue;
         if (!functionNames.has(calledName)) continue;
         if (calledName === caller.name) continue;
         called.add(calledName);
@@ -229,7 +297,9 @@ export async function buildGraph(
             await graph.execute(
               `MATCH (a:Function {id: '${escapeStr(caller.id)}'}) MATCH (b:Function {id: '${escapeStr(target.id)}'}) CREATE (a)-[:CALLS {confidence: 0.7, callSite: '${escapeStr(caller.name + '→' + target.name)}'}]->(b)`,
             );
-          } catch { /* edge may already exist */ }
+          } catch {
+            /* edge may already exist */
+          }
         }
       }
     }
@@ -254,7 +324,12 @@ export async function buildGraph(
 interface ProcessFileResult {
   entity: EntityInstance;
   apiUsage: { fromFile: string; apiName: string; frameworkName: string }[];
-  storeItems: { name: string; filePath: string; type: string; properties: Record<string, unknown> }[];
+  storeItems: {
+    name: string;
+    filePath: string;
+    type: string;
+    properties: Record<string, unknown>;
+  }[];
   functions: FunctionDef[];
 }
 
@@ -267,8 +342,13 @@ async function processFile(
   const source = readFileSync(filePath, 'utf-8');
   const props: Record<string, unknown> = {};
   const apiUsage: { fromFile: string; apiName: string; frameworkName: string }[] = [];
-  const storeItems: { name: string; filePath: string; type: string; properties: Record<string, unknown> }[] = [];
-  let functions: FunctionDef[] = [];
+  const storeItems: {
+    name: string;
+    filePath: string;
+    type: string;
+    properties: Record<string, unknown>;
+  }[] = [];
+  let functions: FunctionDef[];
 
   const defaultLang = detectLanguage(filePath);
   let astRoot: SyntaxNode;
@@ -297,7 +377,10 @@ async function processFile(
   if (filePath.endsWith('.vue')) {
     sfc = parseSFC(source, filePath);
     if (sfc.mainScript) {
-      const scriptLang = sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'") ? 'ts' as const : 'js';
+      const scriptLang =
+        sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'")
+          ? ('ts' as const)
+          : 'js';
       const scriptContent = extractScriptContent(sfc.mainScript);
       astRoot = parseSource(scriptContent, scriptLang).rootNode;
     } else {
@@ -347,7 +430,12 @@ async function processFile(
     filePath,
     entityType,
     astRoot,
-    sfc: sfc ? { usesScriptSetup: sfc.usesScriptSetup, mainScript: sfc.mainScript ? { attrs: sfc.mainScript.attrs } : undefined } : null,
+    sfc: sfc
+      ? {
+          usesScriptSetup: sfc.usesScriptSetup,
+          mainScript: sfc.mainScript ? { attrs: sfc.mainScript.attrs } : undefined,
+        }
+      : null,
   });
   if (classResult.functions.length > 0) {
     functions = classResult.functions;
@@ -377,7 +465,7 @@ async function processFile(
 function extractGenericFunctions(
   root: SyntaxNode,
   filePath: string,
-  entityType: string,
+  _entityType: string,
 ): FunctionDef[] {
   const result: FunctionDef[] = [];
   const seen = new Set<string>();
@@ -426,7 +514,8 @@ function extractGenericFunctions(
 
 function extractAnnotations(source: string): Record<string, string> {
   const result: Record<string, string> = {};
-  const annotationRegex = /(?:@)(\w+(?:-\w+)*)\s*:?\s*(\S[^\n]*?(?=\s*@|\s*\*\/|\s*\n\s*\*\/|\n\s*$|$))/gm;
+  const annotationRegex =
+    /(?:@)(\w+(?:-\w+)*)\s*:?\s*(\S[^\n]*?(?=\s*@|\s*\*\/|\s*\n\s*\*\/|\n\s*$|$))/gm;
   let match;
   while ((match = annotationRegex.exec(source)) !== null) {
     const tag = match[1];
@@ -468,7 +557,11 @@ function extractImports(root: SyntaxNode): ImportInfo[] {
       }
     }
 
-    results.push({ source, imports: names, isDefault: node.text.includes('import ') && !node.text.includes('{') });
+    results.push({
+      source,
+      imports: names,
+      isDefault: node.text.includes('import ') && !node.text.includes('{'),
+    });
   }
 
   return results;
@@ -513,7 +606,17 @@ function resolveImportPath(
   if (importSource.startsWith('.')) {
     const dir = dirname(fromFile);
     const basePath = resolve(dir, importSource);
-    for (const ext of ['', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue']) {
+    for (const ext of [
+      '',
+      '.vue',
+      '.ts',
+      '.js',
+      '.jsx',
+      '.tsx',
+      '/index.ts',
+      '/index.js',
+      '/index.vue',
+    ]) {
       const tryPath = basePath + ext;
       if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
@@ -523,7 +626,17 @@ function resolveImportPath(
   if (importSource.startsWith('@/')) {
     const relative = importSource.slice(2);
     const basePath = resolve(sourceRoot, relative);
-    for (const ext of ['', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue']) {
+    for (const ext of [
+      '',
+      '.vue',
+      '.ts',
+      '.js',
+      '.jsx',
+      '.tsx',
+      '/index.ts',
+      '/index.js',
+      '/index.vue',
+    ]) {
       const tryPath = basePath + ext;
       if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
@@ -534,7 +647,17 @@ function resolveImportPath(
     const projectRoot = dirname(sourceRoot);
     const relative = importSource.slice(2);
     const basePath = resolve(projectRoot, relative);
-    for (const ext of ['', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue']) {
+    for (const ext of [
+      '',
+      '.vue',
+      '.ts',
+      '.js',
+      '.jsx',
+      '.tsx',
+      '/index.ts',
+      '/index.js',
+      '/index.vue',
+    ]) {
       const tryPath = basePath + ext;
       if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
@@ -547,7 +670,17 @@ function resolveImportPath(
       const relative = importSource.slice(alias.length);
       for (const base of paths) {
         const basePath = resolve(sourceRoot, base.replace(/\*$/, ''), relative);
-        for (const ext of ['', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue']) {
+        for (const ext of [
+          '',
+          '.vue',
+          '.ts',
+          '.js',
+          '.jsx',
+          '.tsx',
+          '/index.ts',
+          '/index.js',
+          '/index.vue',
+        ]) {
           const tryPath = basePath + ext;
           if (existsSync(tryPath)) return toForwardSlash(tryPath);
         }
@@ -569,8 +702,11 @@ function readTsconfigAliases(sourceRoot: string): Record<string, string[]> {
 }
 
 function readJsonFile(path: string): Record<string, unknown> | null {
-  try { return JSON.parse(readFileSync(path, 'utf-8')); }
-  catch { return null; }
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8'));
+  } catch {
+    return null;
+  }
 }
 
 function extractTsconfigPaths(tsconfig: Record<string, unknown> | null): Record<string, string[]> {
@@ -581,7 +717,7 @@ function extractTsconfigPaths(tsconfig: Record<string, unknown> | null): Record<
   const result: Record<string, string[]> = {};
   for (const [alias, targets] of Object.entries(paths)) {
     const simple = alias.replace(/\/\*$/, '/');
-    result[simple] = targets.map(t => t.replace(/\/\*$/, '/'));
+    result[simple] = targets.map((t) => t.replace(/\/\*$/, '/'));
   }
   return result;
 }
@@ -616,7 +752,10 @@ async function buildRelationshipEdges(
       let astRoot: SyntaxNode;
       if (sfc?.mainScript) {
         const code = extractScriptContent(sfc.mainScript);
-        const scriptLang = sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'") ? 'ts' as const : 'js';
+        const scriptLang =
+          sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'")
+            ? ('ts' as const)
+            : 'js';
         astRoot = parseSource(code, scriptLang).rootNode;
       } else {
         astRoot = parseSource(source).rootNode;
@@ -665,9 +804,17 @@ function matchMatchesEntity(
     if (cleanCallee.includes(cleanEntityName) && cleanEntityName.length > 1) return true;
     if (cleanEntityName.includes(cleanCallee) && cleanCallee.length > 1) return true;
 
-    const calleeCore = callee.replace(/^use/, '').replace(/Store$/i, '').toLowerCase();
+    const calleeCore = callee
+      .replace(/^use/, '')
+      .replace(/Store$/i, '')
+      .toLowerCase();
     if (calleeCore.length > 2) {
-      const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
+      const basename =
+        entityPath
+          .split('/')
+          .pop()
+          ?.replace(/\.[^.]+$/, '')
+          .toLowerCase() ?? '';
       if (basename.includes(calleeCore) || calleeCore.includes(basename)) return true;
     }
 
@@ -676,8 +823,18 @@ function matchMatchesEntity(
       if (args && args.length > 0) {
         const vuexModules = extractVuexModules(args);
         for (const mod of vuexModules) {
-          const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
-          if (basename === mod || entityPath.toLowerCase().includes('/' + mod + '/') || entityPath.toLowerCase().endsWith('/' + mod + '.ts') || entityPath.toLowerCase().endsWith('/' + mod + '.js')) {
+          const basename =
+            entityPath
+              .split('/')
+              .pop()
+              ?.replace(/\.[^.]+$/, '')
+              .toLowerCase() ?? '';
+          if (
+            basename === mod ||
+            entityPath.toLowerCase().includes('/' + mod + '/') ||
+            entityPath.toLowerCase().endsWith('/' + mod + '.ts') ||
+            entityPath.toLowerCase().endsWith('/' + mod + '.js')
+          ) {
             return true;
           }
         }
@@ -692,8 +849,13 @@ function matchMatchesEntity(
       if (args && args.length > 0) {
         for (const arg of args) {
           const mod = arg.replace(/['"]/g, '').split('/')[0].toLowerCase();
-          const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
-          if (basename === mod || mod.length > 1 && basename.includes(mod)) return true;
+          const basename =
+            entityPath
+              .split('/')
+              .pop()
+              ?.replace(/\.[^.]+$/, '')
+              .toLowerCase() ?? '';
+          if (basename === mod || (mod.length > 1 && basename.includes(mod))) return true;
         }
       }
     }
@@ -705,8 +867,16 @@ function matchMatchesEntity(
     if (importPath) {
       const normalizedImport = importPath.replace(/\\/g, '/');
       const normalizedEntity = entityPath.replace(/\\/g, '/');
-      const importName = normalizedImport.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
-      const normalized = normalizedEntity.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
+      const importName =
+        normalizedImport
+          .split('/')
+          .pop()
+          ?.replace(/\.[^.]+$/, '') ?? '';
+      const normalized =
+        normalizedEntity
+          .split('/')
+          .pop()
+          ?.replace(/\.[^.]+$/, '') ?? '';
       return importName.toLowerCase() === normalized.toLowerCase();
     }
   }

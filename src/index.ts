@@ -21,11 +21,7 @@ program
   .command('index')
   .description('Build the code knowledge graph for a project')
   .option('-c, --config <path>', 'Path to codesense.yaml', 'codesense.yaml')
-  .option(
-    '-o, --output <path>',
-    'Output path for the KuzuDB graph',
-    '.codesense/graph',
-  )
+  .option('-o, --output <path>', 'Output path for the KuzuDB graph', '.codesense/graph')
   .action(async (options) => {
     const configPath = resolve(process.cwd(), options.config);
     const outputPath = resolve(process.cwd(), options.output);
@@ -43,9 +39,7 @@ program
 
     console.error(`[CodeSense] Project: ${config.project.name}`);
     console.error(`[CodeSense] Source root: ${sourceRoot}`);
-    console.error(
-      `[CodeSense] Entity types: ${Object.keys(config.all_entities).join(', ')}`,
-    );
+    console.error(`[CodeSense] Entity types: ${Object.keys(config.all_entities).join(', ')}`);
     console.error(`[CodeSense] Building graph...`);
 
     const startTime = Date.now();
@@ -71,11 +65,7 @@ program
   .command('serve')
   .description('Start the MCP server (stdio by default, HTTP with --port)')
   .option('-c, --config <path>', 'Path to codesense.yaml', 'codesense.yaml')
-  .option(
-    '-o, --output <path>',
-    'Path to the KuzuDB graph',
-    '.codesense/graph',
-  )
+  .option('-o, --output <path>', 'Path to the KuzuDB graph', '.codesense/graph')
   .option('-p, --port <number>', 'Run as HTTP server on the given port', parseInt)
   .action(async (options) => {
     const configPath = resolve(process.cwd(), options.config);
@@ -117,7 +107,9 @@ program
             if (e.isFile()) return [e.name];
             return [];
           });
-        } catch { return []; }
+        } catch {
+          return [];
+        }
       };
       const files = scanDir(srcDir, 3);
       const tsCount = files.filter((f) => f.endsWith('.ts')).length;

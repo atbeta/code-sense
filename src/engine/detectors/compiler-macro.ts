@@ -25,9 +25,7 @@ export const CompilerMacroDetector: Detector = {
       ctx.root,
       (node) =>
         node.type === 'call_expression' &&
-        macros.includes(
-          node.childForFieldName('function')?.text ?? '',
-        ),
+        macros.includes(node.childForFieldName('function')?.text ?? ''),
     );
 
     for (const node of callNodes) {

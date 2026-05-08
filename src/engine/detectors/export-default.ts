@@ -20,9 +20,7 @@ export const ExportDefaultDetector: Detector = {
     // Find export_statement containing 'default'
     const exportNodes = collect(
       ctx.root,
-      (node) =>
-        node.type === 'export_statement' &&
-        node.text.includes('default'),
+      (node) => node.type === 'export_statement' && node.text.includes('default'),
     );
 
     for (const node of exportNodes) {
@@ -41,10 +39,7 @@ export const ExportDefaultDetector: Detector = {
           const args = child.childForFieldName('arguments');
           if (args) {
             for (const arg of args.namedChildren) {
-              if (
-                arg.type === 'object' ||
-                arg.type === 'object_literal'
-              ) {
+              if (arg.type === 'object' || arg.type === 'object_literal') {
                 extractObjectProperties(arg, extract, match);
               }
             }

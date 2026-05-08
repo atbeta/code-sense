@@ -1,5 +1,5 @@
 import type { CodeSensePlugin, DetectionResult } from './types.js';
-import type { EntityDefinition, FrameworkAPI, RelationshipDefinition, ResolvedConfig } from '../types/config.js';
+import type { EntityDefinition, FrameworkAPI, RelationshipDefinition } from '../types/config.js';
 
 export interface ActivatedPlugin {
   plugin: CodeSensePlugin;
@@ -91,12 +91,15 @@ export class PluginRegistry {
    * Run extractEntity on all activated plugins that provide it.
    * Returns merged results.
    */
-  async extractEntity(
-    ctx: Parameters<NonNullable<CodeSensePlugin['extractEntity']>>[0],
-  ): Promise<{
+  async extractEntity(ctx: Parameters<NonNullable<CodeSensePlugin['extractEntity']>>[0]): Promise<{
     properties: Record<string, unknown>;
     apiUsage: { fromFile: string; apiName: string; frameworkName: string }[];
-    storeItems: { name: string; filePath: string; type: string; properties: Record<string, unknown> }[];
+    storeItems: {
+      name: string;
+      filePath: string;
+      type: string;
+      properties: Record<string, unknown>;
+    }[];
   }> {
     const merged: ReturnType<typeof this.extractEntity> extends Promise<infer T> ? T : never = {
       properties: {},

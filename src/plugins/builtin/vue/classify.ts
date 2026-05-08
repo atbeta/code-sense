@@ -28,10 +28,14 @@ export function classifyVueFunctions(ctx: FunctionExtractionContext): FunctionEx
 
     const content = node.text.length > 300 ? node.text.substring(0, 300) + '...' : node.text;
     result.functions.push({
-      id, name,
+      id,
+      name,
       filePath: ctx.filePath,
       entityPath: ctx.filePath,
-      kind, startLine, endLine, content,
+      kind,
+      startLine,
+      endLine,
+      content,
     });
   }
 
@@ -43,8 +47,11 @@ export function classifyVueFunctions(ctx: FunctionExtractionContext): FunctionEx
     const name = node.childForFieldName('name')?.text;
     if (!name || (name.startsWith('_') && name.length > 1)) continue;
     const isComposable = /^use[A-Z]/.test(name);
-    const kind = isComposable ? 'composable_function' :
-      entityType === 'store' ? 'store_action' : 'function';
+    const kind = isComposable
+      ? 'composable_function'
+      : entityType === 'store'
+        ? 'store_action'
+        : 'function';
     addFn(name, kind, node.startPosition.row + 1, node.endPosition.row + 1, node);
   }
 
@@ -62,14 +69,20 @@ export function classifyVueFunctions(ctx: FunctionExtractionContext): FunctionEx
       if (name.startsWith('_') && name.length > 1) continue;
 
       const isComposable = /^use[A-Z]/.test(name);
-      const kind = isComposable ? 'composable_function' :
-        entityType === 'store' ? 'store_action' : 'function';
+      const kind = isComposable
+        ? 'composable_function'
+        : entityType === 'store'
+          ? 'store_action'
+          : 'function';
       addFn(name, kind, child.startPosition.row + 1, child.endPosition.row + 1, child);
     }
   }
 
   // Options API methods
-  for (const exp of collect(root, (n) => n.type === 'export_statement' && n.text.includes('default'))) {
+  for (const exp of collect(
+    root,
+    (n) => n.type === 'export_statement' && n.text.includes('default'),
+  )) {
     for (const obj of collect(exp, (n) => n.type === 'object')) {
       for (const pair of obj.namedChildren) {
         if (pair.type !== 'pair') continue;
@@ -84,13 +97,25 @@ export function classifyVueFunctions(ctx: FunctionExtractionContext): FunctionEx
             const methodBody = method.childForFieldName('value');
             if (!methodKey || !methodBody) continue;
             if (methodBody.type === 'arrow_function' || methodBody.type === 'function') {
-              addFn(methodKey, 'method', methodBody.startPosition.row + 1, methodBody.endPosition.row + 1, methodBody);
+              addFn(
+                methodKey,
+                'method',
+                methodBody.startPosition.row + 1,
+                methodBody.endPosition.row + 1,
+                methodBody,
+              );
             }
           }
           if (method.type === 'method_definition') {
             const methodName = method.childForFieldName('name')?.text;
             if (!methodName) continue;
-            addFn(methodName, 'method', method.startPosition.row + 1, method.endPosition.row + 1, method);
+            addFn(
+              methodName,
+              'method',
+              method.startPosition.row + 1,
+              method.endPosition.row + 1,
+              method,
+            );
           }
         }
       }
@@ -108,7 +133,13 @@ export function classifyVueFunctions(ctx: FunctionExtractionContext): FunctionEx
             const compBody = comp.childForFieldName('value');
             if (!compKey || !compBody) continue;
             if (compBody.type === 'arrow_function' || compBody.type === 'function') {
-              addFn(compKey, 'method', compBody.startPosition.row + 1, compBody.endPosition.row + 1, compBody);
+              addFn(
+                compKey,
+                'method',
+                compBody.startPosition.row + 1,
+                compBody.endPosition.row + 1,
+                compBody,
+              );
             }
           }
         }

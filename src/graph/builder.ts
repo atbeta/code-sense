@@ -1002,20 +1002,29 @@ function matchMatchesEntity(
 
   if (detectorType === 'import_expression') {
     const importPath = String(match.importPath ?? match.callee ?? '').replace(/['"]/g, '');
-    if (importPath) {
+    if (importPath && importPath.length > 2) {
       const normalizedImport = importPath.replace(/\\/g, '/');
       const normalizedEntity = entityPath.replace(/\\/g, '/');
-      const importName =
-        normalizedImport
-          .split('/')
-          .pop()
-          ?.replace(/\.[^.]+$/, '') ?? '';
-      const normalized =
-        normalizedEntity
-          .split('/')
-          .pop()
-          ?.replace(/\.[^.]+$/, '') ?? '';
-      return importName.toLowerCase() === normalized.toLowerCase();
+      const importName = normalizedImport.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
+      const entityName = normalizedEntity.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
+      if (importName.length > 1 && entityName.length > 1 && importName === entityName) {
+        return true;
+      }
+      // Fuzzy: import path segment appears in entity path
+      if (importName.length > 2 && normalizedEntity.toLowerCase().includes('/' + importName + '/')) {
+        return true;
+      }
+    }
+  }
+
+  if (detectorType === 'import_statement') {
+    // Static imports: match by .vue file reference
+    const source = String(match.source ?? match.importPath ?? '').replace(/['"]/g, '');
+    if (source && source.length > 2) {
+      const normalized = source.replace(/\\/g, '/');
+      const sourceName = normalized.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
+      const entityName = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
+      if (sourceName.length > 1 && sourceName === entityName) return true;
     }
   }
 

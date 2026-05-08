@@ -347,15 +347,24 @@ export async function routeMap(
       const relType = (rel?._label as string) ?? '?';
       const compRel = relative(process.cwd(), (r.componentPath as string) || '') || '?';
 
+      // Try to match edge target to a specific route entry for path/name info
       if (routeProps.routes && Array.isArray(routeProps.routes)) {
-        for (const route of routeProps.routes as Array<Record<string, unknown>>) {
+        const matched = (routeProps.routes as Array<Record<string, unknown>>).find(
+          (route: Record<string, unknown>) => {
+            const comp = String(route.component ?? '');
+            const compName = comp.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
+            const edgeName = (r.componentName as string)?.toLowerCase() ?? '';
+            return compName === edgeName;
+          },
+        );
+        if (matched) {
           parts.push(
-            `- \`${route.path ?? '?'}\` (${route.name ?? 'unnamed'}) → **${r.componentName ?? compRel}** \`${compRel}\``,
+            `- \`${matched.path ?? '?'}\` (${matched.name ?? 'unnamed'}) → **${r.componentName ?? compRel}** \`${compRel}\``,
           );
+          continue;
         }
-      } else {
-        parts.push(`- \`${relType}\` → **${r.componentName ?? compRel}** \`${compRel}\``);
       }
+      parts.push(`- \`${relType}\` → **${r.componentName ?? compRel}** \`${compRel}\``);
     }
   }
 

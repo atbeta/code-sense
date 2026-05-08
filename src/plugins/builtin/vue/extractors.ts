@@ -14,6 +14,11 @@ import type { SyntaxNode } from 'web-tree-sitter';
 import type { EntityExtractionContext, EntityExtractionResult } from '../../types.js';
 import { parseSFC, extractScriptContent } from '../../../engine/sfc-parser.js';
 import { parseSource, collect } from '../../../engine/ast-traverser.js';
+import {
+  extractMainIPC,
+  extractRendererIPC,
+  extractPreloadBridge,
+} from './electron.js';
 
 // ── Public API ──
 
@@ -61,6 +66,33 @@ export function extractVueEntity(ctx: EntityExtractionContext): EntityExtraction
   // Route file detection
   if (ctx.entityType === 'route') {
     detectRouter(astRoot, props);
+  }
+
+  // Electron main process: extract IPC handlers
+  if (ctx.entityType === 'electron-main') {
+    const handlers = extractMainIPC(astRoot);
+    if (handlers.length > 0) {
+      props.ipcHandlers = handlers;
+      props.isElectronMain = true;
+    }
+  }
+
+  // Preload script: extract bridge definition
+  if (ctx.entityType === 'preload') {
+    const bridge = extractPreloadBridge(astRoot);
+    if (bridge) {
+      props.preloadBridge = bridge;
+      props.isPreload = true;
+    }
+  }
+
+  // Components and renderer files: detect IPC calls
+  if (ctx.entityType === 'component' || ctx.entityType === 'page' || ctx.entityType === 'layout') {
+    const ipcCalls = extractRendererIPC(astRoot);
+    if (ipcCalls.length > 0) {
+      props.ipcCalls = ipcCalls;
+      props.usesIPC = true;
+    }
   }
 
   return { properties: props, apiUsage, storeItems };

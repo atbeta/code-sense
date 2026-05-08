@@ -93,6 +93,21 @@ export const VUE_ENTITIES: Record<string, EntityDefinition> = {
     ],
     description: 'Vue component mixin (shared Options API logic)',
   },
+
+  'electron-main': {
+    patterns: ['electron/main.ts', 'electron/main.js', 'electron/index.ts', 'electron/index.js', 'src/main/**/*.ts', 'src/main/**/*.js'],
+    description: 'Electron main process entry point',
+  },
+
+  preload: {
+    patterns: ['electron/preload/**/*.ts', 'electron/preload/**/*.js', 'electron/preload.ts', 'electron/preload.js', 'src/preload/**/*.ts', 'src/preload/**/*.js'],
+    properties: [
+      { name: 'name', extract: 'file_name' },
+      { name: 'filePath', extract: 'file_path' },
+      { name: 'category', extract: 'file_category' },
+    ],
+    description: 'Electron preload script (contextBridge)',
+  },
 };
 
 export const VUE_FRAMEWORK_APIS: FrameworkAPI[] = [
@@ -213,5 +228,35 @@ export const VUE_RELATIONSHIPS: Record<string, RelationshipDefinition> = {
     from: 'component',
     to: 'mixin',
     detect_by: [],
+  },
+
+  ipc_channel: {
+    description: 'Main process handles an IPC channel that renderer calls',
+    from: 'electron-main',
+    to: 'electron-main',
+    detect_by: [
+      { type: 'call_expression', pattern: 'ipcMain.handle' },
+      { type: 'call_expression', pattern: 'ipcMain.on' },
+    ],
+  },
+
+  exposes_ipc: {
+    description: 'Preload script exposes IPC methods to renderer',
+    from: 'preload',
+    to: 'preload',
+    detect_by: [
+      { type: 'call_expression', pattern: 'contextBridge.exposeInMainWorld' },
+    ],
+  },
+
+  calls_ipc: {
+    description: 'Renderer calls IPC through preload bridge or direct invoke',
+    from: 'component',
+    to: 'electron-main',
+    detect_by: [
+      { type: 'call_expression', pattern: 'ipcRenderer.invoke' },
+      { type: 'call_expression', pattern: 'ipcRenderer.send' },
+      { type: 'member_expression', pattern: 'window.*' },
+    ],
   },
 };

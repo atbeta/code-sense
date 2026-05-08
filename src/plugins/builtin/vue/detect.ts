@@ -46,6 +46,13 @@ export async function detectVue(projectRoot: string): Promise<DetectionResult> {
           description: 'vuex state management',
         });
       }
+      if (deps.electron || deps['electron-builder']) {
+        signals.push({
+          type: 'dependency',
+          value: `electron@${deps.electron || deps['electron-builder']}`,
+          description: 'electron desktop app',
+        });
+      }
     } catch {
       // package.json may be invalid
     }

@@ -60,18 +60,19 @@ program
 
 program
   .command('serve')
-  .description('Start the MCP server (stdio)')
+  .description('Start the MCP server (stdio by default, HTTP with --port)')
   .option('-c, --config <path>', 'Path to codesense.yaml', 'codesense.yaml')
   .option(
     '-o, --output <path>',
     'Path to the KuzuDB graph',
     '.codesense/graph',
   )
+  .option('-p, --port <number>', 'Run as HTTP server on the given port', parseInt)
   .action(async (options) => {
     const configPath = resolve(process.cwd(), options.config);
     const outputPath = resolve(process.cwd(), options.output);
 
-    await startMCPServer(configPath, outputPath);
+    await startMCPServer(configPath, outputPath, options.port);
   });
 
 program

@@ -1,5 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
+import { randomUUID } from 'node:crypto';
 import * as z from 'zod';
 import { dirname } from 'node:path';
 import { LbugGraph } from '../graph/lbug.js';
@@ -18,6 +21,7 @@ import type { ToolContext } from './tools.js';
 export async function startMCPServer(
   configPath: string,
   dbPath: string,
+  port?: number,
 ): Promise<void> {
   const config = loadConfig(configPath);
   const configDir = dirname(configPath) || process.cwd();
@@ -153,11 +157,43 @@ export async function startMCPServer(
     },
   );
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  if (port) {
+    // Streamable HTTP mode — for Continue, Claude Desktop, etc.
+    const app = createMcpExpressApp();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
 
-  console.error(`[CodeSense] MCP server started — 7 tools available`);
-  console.error(`[CodeSense] Config: ${configPath}`);
-  console.error(`[CodeSense] Graph DB: ${dbPath}`);
-  console.error(`[CodeSense] Source root: ${sourceRoot}`);
+    await server.connect(transport);
+
+    app.post('/mcp', async (req: any, res: any) => {
+      await transport.handleRequest(req, res, req.body);
+    });
+    app.get('/mcp', async (req: any, res: any) => {
+      await transport.handleRequest(req, res);
+    });
+    app.delete('/mcp', async (req: any, res: any) => {
+      await transport.handleRequest(req, res);
+    });
+
+    await new Promise<void>((resolve) => {
+      app.listen(port, () => {
+        console.error(`[CodeSense] MCP server listening on http://localhost:${port}/mcp`);
+        console.error(`[CodeSense] 7 tools available`);
+        console.error(`[CodeSense] Config: ${configPath}`);
+        console.error(`[CodeSense] Graph DB: ${dbPath}`);
+        console.error(`[CodeSense] Source root: ${sourceRoot}`);
+        resolve();
+      });
+    });
+  } else {
+    // Stdio mode
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+
+    console.error(`[CodeSense] MCP server started — 7 tools available`);
+    console.error(`[CodeSense] Config: ${configPath}`);
+    console.error(`[CodeSense] Graph DB: ${dbPath}`);
+    console.error(`[CodeSense] Source root: ${sourceRoot}`);
+  }
 }

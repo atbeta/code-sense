@@ -283,9 +283,10 @@ export async function impactAnalysis(
 
 export async function routeMap(
   ctx: ToolContext,
-  params: { routePattern?: string },
+  params: { routePattern?: string; limit?: number },
 ): Promise<string> {
   const pattern = params.routePattern ?? '';
+  const limit = Math.min(params.limit ?? 50, 200);
 
   let query: string;
   if (pattern) {
@@ -300,7 +301,7 @@ export async function routeMap(
   }
 
   const parts: string[] = ['## Route Map' + (pattern ? ` (matching "${pattern}")` : '')];
-  parts.push(`Total mappings: ${rows.length}`);
+  parts.push(`Total mappings: ${rows.length}${rows.length > limit ? ` (showing first ${limit})` : ''}`);
   parts.push('');
 
   // Group by route file
@@ -313,11 +314,15 @@ export async function routeMap(
     byRoute.set(routePath, list);
   }
 
+  let shown = 0;
   for (const [routePath, entries] of byRoute) {
+    if (shown >= limit) break;
     const relRoute = relative(process.cwd(), routePath) || routePath;
     parts.push(`### \`${relRoute}\``);
 
     for (const row of entries) {
+      if (shown >= limit) break;
+      shown++;
       const r = row as Record<string, unknown>;
       const routeProps = parseProps(r.routeProps);
       const rel = r.rel as Record<string, unknown> | undefined;

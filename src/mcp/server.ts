@@ -84,7 +84,7 @@ export async function startMCPServer(
     'route_map',
     {
       description:
-        'Map Vue Router route definitions to their target page components. Shows route paths, names, and which component/lazy-import they resolve to. Optionally filter by route pattern.',
+        'Map Vue Router route definitions to their target page components. Shows route paths, names, and which component/lazy-import they resolve to. Optionally filter by route pattern. Use limit to avoid large outputs (default 50).',
       inputSchema: z.object({
         routePattern: z
           .string()
@@ -92,10 +92,14 @@ export async function startMCPServer(
           .describe(
             'Optional filter: route path pattern, component name, or route file name to search for',
           ),
+        limit: z
+          .number()
+          .optional()
+          .describe('Max route entries to return (default: 50, max: 200)'),
       }),
     },
-    async ({ routePattern }) => {
-      const result = await routeMap(ctx, { routePattern });
+    async ({ routePattern, limit }) => {
+      const result = await routeMap(ctx, { routePattern, limit });
       return { content: [{ type: 'text', text: result }] };
     },
   );

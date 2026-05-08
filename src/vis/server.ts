@@ -250,13 +250,16 @@ var EDGE_WIDTH = {
 };
 
 var NODE_SIZES = {
-  component: 4,
-  store: 3.5,
-  route: 3,
-  composable: 3,
-  legacy_module: 4,
-  chart_component: 3.5,
+  component: 9,
+  store: 8,
+  route: 7,
+  composable: 6,
+  legacy_module: 9,
+  chart_component: 8,
 };
+
+var INCOMING_COLOR = '#f0883e';  // warm orange for incoming
+var OUTGOING_COLOR = '#58a6ff';  // bright blue for outgoing
 
 // ===== GLOBAL STATE =====
 var allData = null;
@@ -497,9 +500,31 @@ function buildGraph(data) {
   }
   edgeVisibility = edgeTypes;
 
+  // Compute degree (connection count) for each node for size scaling
+  var degree = {};
+  for (var i = 0; i < nodeCount; i++) {
+    degree[data.nodes[i].key] = 0;
+  }
+  for (var j = 0; j < data.edges.length; j++) {
+    if (degree[data.edges[j].source] !== undefined) degree[data.edges[j].source]++;
+    if (degree[data.edges[j].target] !== undefined) degree[data.edges[j].target]++;
+  }
+
+  // Compute degree range for normalization
+  var maxDeg = 0, minDeg = 1e9;
+  for (var k in degree) {
+    maxDeg = Math.max(maxDeg, degree[k]);
+    minDeg = Math.min(minDeg, degree[k]);
+  }
+  if (minDeg === maxDeg) maxDeg = minDeg + 1; // avoid div by zero
+
   for (var i = 0; i < nodeCount; i++) {
     var n = data.nodes[i];
     var angle = (2 * Math.PI * i) / nodeCount;
+    var baseSize = nodeSize(n.entityType);
+    // Scale size by degree: min connection = base, max connection = base * 2.5
+    var deg = degree[n.key] || 0;
+    var degScale = 1 + ((deg - minDeg) / (maxDeg - minDeg)) * 1.5;
     g.addNode(n.key, {
       label: n.label,
       entityType: n.entityType,
@@ -507,7 +532,9 @@ function buildGraph(data) {
       // force label color via node attribute
       labelColor: '#e1e4e8',
       _properties: n.properties,
-      size: nodeSize(n.entityType),
+      _degree: deg,
+      _baseSize: baseSize,
+      size: Math.round(baseSize * degScale),
       color: typeColor(n.entityType),
       x: circleR * Math.cos(angle) + (Math.random()-0.5)*40,
       y: circleR * Math.sin(angle) + (Math.random()-0.5)*40,
@@ -560,6 +587,10 @@ function renderLegend(data, edgeTypes) {
     var c = edgeColor(et);
     html += '<div class="legend-row"><span class="legend-line" style="background:'+c+'"></span><span>'+et+'</span></div>';
   }
+  // Selection mode indicator
+  html += '<div class="group-title">On Select</div>';
+  html += '<div class="legend-row"><span class="legend-line" style="background:'+OUTGOING_COLOR+'"></span><span>outgoing</span></div>';
+  html += '<div class="legend-row"><span class="legend-line" style="background:'+INCOMING_COLOR+'"></span><span>incoming</span></div>';
   document.getElementById('legend').innerHTML = html;
 }
 
@@ -705,31 +736,40 @@ function applyNodeHighlight() {
 
     if (hasSelection) {
       graph.setNodeAttribute(node, 'hidden', !isSelected && !isNeighbor && !isHighlighted);
+      var base = attrs._baseSize || nodeSize(attrs.entityType) || 6;
       if (isSelected) {
-        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 3.5);
+        graph.setNodeAttribute(node, 'size', base * 3.5);
         graph.setNodeAttribute(node, 'zIndex', 100);
       } else if (isNeighbor) {
-        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 2.0);
+        graph.setNodeAttribute(node, 'size', base * 2.0);
         graph.setNodeAttribute(node, 'zIndex', 50);
       } else if (isHighlighted) {
-        graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType) * 2.5);
+        graph.setNodeAttribute(node, 'size', base * 2.5);
         graph.setNodeAttribute(node, 'zIndex', 75);
       }
     } else {
       graph.setNodeAttribute(node, 'hidden', false);
-      graph.setNodeAttribute(node, 'size', nodeSize(attrs.entityType));
+      graph.setNodeAttribute(node, 'size', attrs._baseSize || attrs.size);
       graph.setNodeAttribute(node, 'zIndex', 0);
     }
   });
 
   graph.forEachEdge(function(edge, attrs, src, tgt) {
     if (hasSelection) {
-      var connected = (selectedNode && (src === selectedNode || tgt === selectedNode)) ||
-        (highlightedNodes.has(src) || highlightedNodes.has(tgt));
+      var isOutgoing = selectedNode && src === selectedNode;
+      var isIncoming = selectedNode && tgt === selectedNode;
+      var isHighlightConnected = !selectedNode && (highlightedNodes.has(src) || highlightedNodes.has(tgt));
+      var connected = isOutgoing || isIncoming || isHighlightConnected;
       if (connected) {
         graph.setEdgeAttribute(edge, 'hidden', false);
-        graph.setEdgeAttribute(edge, 'size', edgeWidth(attrs._relType) * 2);
+        graph.setEdgeAttribute(edge, 'size', edgeWidth(attrs._relType) * 2.5);
         graph.setEdgeAttribute(edge, 'zIndex', 25);
+        // Distinguish incoming vs outgoing by color
+        if (isOutgoing) {
+          graph.setEdgeAttribute(edge, 'color', OUTGOING_COLOR);
+        } else if (isIncoming) {
+          graph.setEdgeAttribute(edge, 'color', INCOMING_COLOR);
+        }
       } else {
         graph.setEdgeAttribute(edge, 'hidden', true);
         graph.setEdgeAttribute(edge, 'zIndex', -5);
@@ -737,6 +777,7 @@ function applyNodeHighlight() {
     } else {
       graph.setEdgeAttribute(edge, 'hidden', false);
       graph.setEdgeAttribute(edge, 'size', edgeWidth(attrs._relType));
+      graph.setEdgeAttribute(edge, 'color', edgeColor(attrs._relType));
       graph.setEdgeAttribute(edge, 'zIndex', -1);
     }
   });

@@ -50,26 +50,28 @@ const HTML_PAGE = `<!DOCTYPE html>
   /* Top Bar */
   #topbar {
     position:absolute; top:0; left:0; right:0; z-index:10;
-    display:flex; align-items:center; gap:10px; padding:8px 14px;
+    display:flex; align-items:center; gap:6px; padding:6px 12px;
     background:var(--surface); border-bottom:1px solid var(--border);
     backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
   }
   #topbar input {
-    flex:1; max-width:300px; padding:6px 12px; border:1px solid var(--border);
-    border-radius:6px; background:var(--bg); color:var(--text); font-size:13px; outline:none;
+    flex:1; max-width:300px; padding:5px 12px; border:1px solid var(--border);
+    border-radius:6px; background:var(--bg); color:var(--text); font-size:12px; outline:none;
     font-family:'Inter',sans-serif; transition:border-color 0.2s, box-shadow 0.2s;
+    height:30px;
   }
   #topbar input::placeholder { color:var(--muted); }
-  #topbar input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(88,166,255,0.1); }
-  #topbar .sep { width:1px; height:20px; background:var(--border); }
+  #topbar input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(121,192,255,0.1); }
+  #topbar .sep { width:1px; height:18px; background:var(--border); margin:0 2px; }
   #topbar .btn {
-    padding:5px 12px; border:1px solid var(--border); border-radius:6px;
+    padding:4px 10px; border:1px solid var(--border); border-radius:6px;
     background:transparent; color:var(--text-secondary); cursor:pointer; font-size:11px;
-    font-family:'Inter',sans-serif; font-weight:500; transition:all 0.2s; white-space:nowrap; display:flex; align-items:center; gap:5px;
+    font-family:'Inter',sans-serif; font-weight:500; transition:all 0.2s; white-space:nowrap; display:flex; align-items:center; gap:4px;
+    height:28px; letter-spacing:0.01em;
   }
   #topbar .btn:hover { color:var(--text); border-color:var(--border-light); background:var(--surface-raised); }
-  #topbar .btn.active { color:var(--blue); border-color:var(--blue); background:rgba(88,166,255,0.06); }
-  #topbar .stats { color:var(--text-secondary); font-size:12px; font-weight:500; margin-left:auto; }
+  #topbar .btn.active { color:var(--blue); border-color:var(--blue); background:rgba(121,192,255,0.06); }
+  #topbar .stats { color:var(--text-secondary); font-size:11px; font-weight:500; margin-left:auto; opacity:0.8; }
 
   /* Legend */
   #legend {
@@ -214,26 +216,32 @@ const HTML_PAGE = `<!DOCTYPE html>
 
 // ===== CONSTANTS =====
 var TYPE_COLORS = {
-  component: '#58a6ff',
-  store: '#3fb950',
-  route: '#f0883e',
-  composable: '#a371f7',
-  legacy_module: '#f85149',
-  chart_component: '#f0883e',
-  server_api_composable: '#39d2c0',
+  component: '#79c0ff',
+  store: '#56d364',
+  route: '#e3b341',
+  composable: '#bc8cff',
+  legacy_module: '#ff7b72',
+  chart_component: '#e3b341',
+  server_api_composable: '#56d4dd',
+  mixin: '#f778ba',
+  page: '#79c0ff',
+  layout: '#79c0ff',
+  plugin: '#e3b341',
+  package: '#6e7681',
 };
 
 var EDGE_COLORS = {
-  imports: '#6e7681',
-  USES_API: '#58a6ff',
-  uses_store: '#3fb950',
-  uses_composable: '#a371f7',
-  matches_route: '#f0883e',
-  has_state: '#f0883e',
-  has_getter: '#39d2c0',
-  has_action: '#db61a2',
-  has_mutation: '#f85149',
-  belongs_to: '#6e7681',
+  imports: '#8b949e',
+  USES_API: '#79c0ff',
+  uses_store: '#56d364',
+  uses_composable: '#bc8cff',
+  matches_route: '#e3b341',
+  uses_mixin: '#f778ba',
+  has_state: '#e3b341',
+  has_getter: '#56d4dd',
+  has_action: '#f778ba',
+  has_mutation: '#ff7b72',
+  belongs_to: '#8b949e',
 };
 
 var EDGE_WIDTH = {
@@ -271,7 +279,7 @@ var edgeVisibility = {};
 var layoutRunning = false;
 
 // Helpers
-function typeColor(t) { return TYPE_COLORS[t] || '#8b949e'; }
+function typeColor(t) { return TYPE_COLORS[t] || '#6e7681'; }
 function edgeColor(t) { return EDGE_COLORS[t] || '#8b949e'; }
 function edgeWidth(t) { return EDGE_WIDTH[t] || 0.5; }
 function nodeSize(t) { return NODE_SIZES[t] || 6; }
@@ -564,19 +572,26 @@ function buildGraph(data) {
 }
 
 // ===== LEGEND =====
+var entityVisibility = {}; // track which entity types are visible
+
 function renderLegend(data, edgeTypes) {
   var html = '';
-  // Node types
-  html += '<div class="group-title">Entities</div>';
+  // Node types — clickable for filtering
+  html += '<div class="group-title">Entities (click to filter)</div>';
   var nodeTypes = {};
   for (var i = 0; i < data.nodes.length; i++) {
     var t = data.nodes[i].entityType;
     nodeTypes[t] = (nodeTypes[t] || 0) + 1;
+    if (entityVisibility[t] === undefined) entityVisibility[t] = true;
   }
   var nodeKeys = Object.keys(nodeTypes).sort();
   for (var nk = 0; nk < nodeKeys.length; nk++) {
     var t = nodeKeys[nk];
-    html += '<div class="legend-row"><span class="legend-dot" style="background:'+typeColor(t)+'"></span><span>'+t+' ('+nodeTypes[t]+')</span></div>';
+    var vis = entityVisibility[t];
+    html += '<div class="legend-row legend-filter" data-entity="'+t+'" style="cursor:pointer;' + (vis ? '' : 'opacity:0.35') + '">';
+    html += '<span class="legend-dot" style="background:'+typeColor(t)+(vis ? '' : ';border:1px solid '+typeColor(t)+';background:transparent')+'"></span>';
+    html += '<span>'+t+' ('+nodeTypes[t]+')</span>';
+    html += '</div>';
   }
 
   // Edge types
@@ -592,6 +607,32 @@ function renderLegend(data, edgeTypes) {
   html += '<div class="legend-row"><span class="legend-line" style="background:'+OUTGOING_COLOR+'"></span><span>outgoing</span></div>';
   html += '<div class="legend-row"><span class="legend-line" style="background:'+INCOMING_COLOR+'"></span><span>incoming</span></div>';
   document.getElementById('legend').innerHTML = html;
+
+  // Attach click handlers for entity filtering
+  document.querySelectorAll('.legend-filter').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var entityType = el.getAttribute('data-entity');
+      toggleEntityVisibility(entityType);
+    });
+  });
+}
+
+function toggleEntityVisibility(entityType) {
+  entityVisibility[entityType] = !entityVisibility[entityType];
+  graph.forEachNode(function(node, attrs) {
+    if (attrs.entityType === entityType) {
+      graph.setNodeAttribute(node, 'hidden', !entityVisibility[entityType]);
+      // Also hide edges connected to hidden nodes
+      graph.forEachEdge(node, function(edge) {
+        graph.setEdgeAttribute(edge, 'hidden', !entityVisibility[entityType]);
+      });
+    }
+  });
+  if (sigmaInst) sigmaInst.refresh();
+  // Redraw legend
+  var edgeTypes = {};
+  graph.forEachEdge(function(edge, attrs) { edgeTypes[attrs._relType] = true; });
+  renderLegend(allData, edgeTypes);
 }
 
 // ===== BUILD EDGE TOGGLE DROPDOWN =====
@@ -719,68 +760,7 @@ var animationFrame = null;
 var pulseTime = 0;
 
 function applyNodeHighlight() {
-  if (!graph) return;
-
-  var neighbors = new Set();
-  if (selectedNode) {
-    neighbors.add(selectedNode);
-    graph.forEachNeighbor(selectedNode, function(n) { neighbors.add(n); });
-  }
-
-  var hasSelection = selectedNode || highlightedNodes.size > 0;
-
-  graph.forEachNode(function(node, attrs) {
-    var isSelected = (node === selectedNode);
-    var isNeighbor = selectedNode && neighbors.has(node);
-    var isHighlighted = highlightedNodes.has(node);
-
-    if (hasSelection) {
-      graph.setNodeAttribute(node, 'hidden', !isSelected && !isNeighbor && !isHighlighted);
-      var base = attrs._baseSize || nodeSize(attrs.entityType) || 6;
-      if (isSelected) {
-        graph.setNodeAttribute(node, 'size', base * 3.5);
-        graph.setNodeAttribute(node, 'zIndex', 100);
-      } else if (isNeighbor) {
-        graph.setNodeAttribute(node, 'size', base * 2.0);
-        graph.setNodeAttribute(node, 'zIndex', 50);
-      } else if (isHighlighted) {
-        graph.setNodeAttribute(node, 'size', base * 2.5);
-        graph.setNodeAttribute(node, 'zIndex', 75);
-      }
-    } else {
-      graph.setNodeAttribute(node, 'hidden', false);
-      graph.setNodeAttribute(node, 'size', attrs._baseSize || attrs.size);
-      graph.setNodeAttribute(node, 'zIndex', 0);
-    }
-  });
-
-  graph.forEachEdge(function(edge, attrs, src, tgt) {
-    if (hasSelection) {
-      var isOutgoing = selectedNode && src === selectedNode;
-      var isIncoming = selectedNode && tgt === selectedNode;
-      var isHighlightConnected = !selectedNode && (highlightedNodes.has(src) || highlightedNodes.has(tgt));
-      var connected = isOutgoing || isIncoming || isHighlightConnected;
-      if (connected) {
-        graph.setEdgeAttribute(edge, 'hidden', false);
-        graph.setEdgeAttribute(edge, 'size', edgeWidth(attrs._relType) * 2.5);
-        graph.setEdgeAttribute(edge, 'zIndex', 25);
-        // Distinguish incoming vs outgoing by color
-        if (isOutgoing) {
-          graph.setEdgeAttribute(edge, 'color', OUTGOING_COLOR);
-        } else if (isIncoming) {
-          graph.setEdgeAttribute(edge, 'color', INCOMING_COLOR);
-        }
-      } else {
-        graph.setEdgeAttribute(edge, 'hidden', true);
-        graph.setEdgeAttribute(edge, 'zIndex', -5);
-      }
-    } else {
-      graph.setEdgeAttribute(edge, 'hidden', false);
-      graph.setEdgeAttribute(edge, 'size', edgeWidth(attrs._relType));
-      graph.setEdgeAttribute(edge, 'color', edgeColor(attrs._relType));
-      graph.setEdgeAttribute(edge, 'zIndex', -1);
-    }
-  });
+  if (sigmaInst) sigmaInst.refresh();
 }
 
 function startAnimationLoop() {
@@ -941,13 +921,51 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
     labelFont: 'JetBrains Mono,monospace',
     labelColor: { attribute: 'labelColor' },
     labelSize: 12,
-    defaultNodeColor: '#6e7681',
+    defaultNodeColor: '#484f58',
     defaultEdgeColor: '#2a3040',
     stagePadding: 50,
     enableEdgeEvents: true,
     hideEdgesOnMove: true,
     minCameraRatio: 0.002,
     maxCameraRatio: 50,
+    // Disable default white hover ring — we handle selection with size + zIndex
+    nodeHoverProgramClasses: {},
+    defaultDrawNodeHover: function() {},
+    nodeReducer: function(node, data) {
+      var isSel = selectedNode === node;
+      var isNeighbor = selectedNode && graph && graph.neighbors(selectedNode).indexOf(node) >= 0;
+      var isHL = highlightedNodes.has(node);
+      var hasSel = selectedNode || highlightedNodes.size > 0;
+      if (!hasSel) return data;
+      if (isSel) {
+        return { ...data, size: (data._baseSize || 6) * 4.5, zIndex: 100 };
+      }
+      if (isNeighbor) {
+        return { ...data, size: (data._baseSize || 6) * 2.0, zIndex: 50 };
+      }
+      if (isHL) {
+        return { ...data, size: (data._baseSize || 6) * 2.5, zIndex: 75 };
+      }
+      return { ...data, hidden: true };
+    },
+    edgeReducer: function(edge, data) {
+      if (!selectedNode && highlightedNodes.size === 0) return data;
+      var src = graph ? graph.source(edge) : null;
+      var tgt = graph ? graph.target(edge) : null;
+      var isOut = selectedNode && src === selectedNode;
+      var isIn = selectedNode && tgt === selectedNode;
+      var hlConn = !selectedNode && (highlightedNodes.has(src) || highlightedNodes.has(tgt));
+      if (isOut) {
+        return { ...data, hidden: false, size: (edgeWidth(data._relType) || 0.5) * 2.5, color: OUTGOING_COLOR, zIndex: 25 };
+      }
+      if (isIn) {
+        return { ...data, hidden: false, size: (edgeWidth(data._relType) || 0.5) * 2.5, color: INCOMING_COLOR, zIndex: 25 };
+      }
+      if (hlConn) {
+        return { ...data, hidden: false, size: (edgeWidth(data._relType) || 0.5) * 2, zIndex: 20 };
+      }
+      return { ...data, hidden: true };
+    },
   });
 
   // Hide loading overlay

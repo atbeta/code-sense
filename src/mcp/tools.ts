@@ -17,9 +17,27 @@ export async function entityContext(
 ): Promise<string> {
   const filePath = resolve(process.cwd(), params.filePath);
 
-  const rows = await ctx.graph.query(
+  let rows = await ctx.graph.query(
     `MATCH (n:Entity {filePath: '${escapeStr(filePath)}'}) RETURN n`,
   );
+
+  // Fallback: search by filename or entity name if exact path doesn't match
+  if (rows.length === 0) {
+    const searchName = params.filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
+    if (searchName) {
+      const altRows = await ctx.graph.query(
+        `MATCH (n:Entity {name: '${escapeStr(searchName)}'}) RETURN n`,
+      );
+      if (altRows.length > 0) rows = altRows;
+      else {
+        // Try LIKE match on filePath
+        const likeRows = await ctx.graph.query(
+          `MATCH (n:Entity) WHERE n.filePath CONTAINS '${escapeStr(params.filePath)}' RETURN n`,
+        );
+        if (likeRows.length > 0) rows = likeRows;
+      }
+    }
+  }
 
   if (rows.length === 0) {
     return `No entity found for path: ${filePath}`;

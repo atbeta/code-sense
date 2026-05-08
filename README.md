@@ -105,26 +105,44 @@ Example configs for common scenarios:
 
 | Tool | What it answers |
 |------|----------------|
-| `entity_context` | Full Vue-aware context of any file: type, properties, store internals, relationships |
+| `entity_context` | "What is this file?" — full Vue-aware context, store internals, defined functions |
+| `function_context` | "Who calls this function?" — callers, callees, siblings with AST-level accuracy |
 | `impact_analysis` | "If I change this file, what breaks?" — bidirectional BFS traversal |
+| `diff_impact` | "What changed in this git diff?" — function-level change impact trace |
 | `route_map` | "Which URL maps to which component?" |
 | `trace_usage` | "Where is this symbol used?" — with detection evidence |
 | `find_entrypoints` | "What are the app entry points?" — routes, pages, project metadata |
+| `semantic_search` | "Find functions matching this description" — TF-IDF with code-aware tokenization |
 | `project_overview` | Entity/edge counts, store breakdown, framework API stats |
 | `cypher` | Raw Cypher query for debugging |
 
+### MCP Resources
+
+When connected, the AI agent automatically sees:
+
+| Resource | URI | Content |
+|----------|-----|---------|
+| Project metadata | `code-sense://project` | Project name, source root, entity stats |
+| Graph schema | `code-sense://schema` | Entity types, relationships, framework APIs |
+
 ### Configuring MCP in Claude Code / Codex
+
+Remove `-c` and `-o` flags so it auto-detects the current project:
 
 ```json
 {
   "mcpServers": {
     "code-sense": {
       "command": "npx",
-      "args": ["@code-sense/core", "serve", "-c", "codesense.yaml"]
+      "args": ["@code-sense/core", "serve"]
     }
   }
 }
 ```
+
+Claude Code sets the working directory to your project root automatically. The server will find `codesense.yaml` and `.code-sense/graph/` from there.
+
+> **Warning:** Don't hardcode absolute paths in the MCP config, or every project will connect to the same graph.
 
 ## Visualization
 

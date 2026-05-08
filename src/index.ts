@@ -7,6 +7,8 @@ import { loadConfig, resolveSourceRoot } from './config/loader.js';
 import { buildGraph } from './graph/builder.js';
 import { startMCPServer } from './mcp/server.js';
 import { startVisServer } from './vis/server.js';
+import { getRegistry, resetRegistry } from './plugins/registry.js';
+import { vuePlugin } from './plugins/builtin/vue/index.js';
 
 const program = new Command();
 
@@ -31,6 +33,13 @@ program
     console.error(`[CodeSense] Loading config: ${configPath}`);
     const config = loadConfig(configPath);
     const sourceRoot = resolveSourceRoot(config, process.cwd());
+
+    // ── Bootstrap plugins ──
+    resetRegistry();
+    const registry = getRegistry();
+    // Register built-in plugins (always registered, only activated if detected)
+    registry.register(vuePlugin);
+    // TODO: support codesense.yaml `plugins:` field for external plugins
 
     console.error(`[CodeSense] Project: ${config.project.name}`);
     console.error(`[CodeSense] Source root: ${sourceRoot}`);

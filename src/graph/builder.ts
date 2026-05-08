@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, rmSync } from 'node:fs';
-import { basename, extname, resolve, dirname, join, sep } from 'node:path';
+import { basename, extname, resolve, dirname, join } from 'node:path';
 import type { SyntaxNode } from 'web-tree-sitter';
 import type { ResolvedConfig } from '../types/config.js';
 import type { EntityInstance, RelationInstance } from '../types/graph.js';
@@ -17,6 +17,7 @@ import { getDetector } from '../engine/detectors/index.js';
 import type { DetectorContext } from '../engine/detectors/base.js';
 import { LbugGraph } from './lbug.js';
 import { createSchema } from './schema.js';
+import { getRegistry } from '../plugins/registry.js';
 
 export interface FunctionDef {
   id: string;
@@ -44,23 +45,41 @@ export async function buildGraph(
 ): Promise<BuildResult> {
   await initParser();
 
+  // ── Activate plugins ──
+  const registry = getRegistry();
+  const projectRoot = process.cwd();
+  const pluginContrib = await registry.activate(projectRoot);
+
+  // Merge plugin contributions into config
+  const mergedConfig: ResolvedConfig = {
+    ...config,
+    all_entities: { ...config.all_entities, ...pluginContrib.entities },
+    framework_apis: [...(config.framework_apis ?? []), ...pluginContrib.frameworkAPIs],
+    relationships: { ...(config.relationships ?? {}), ...pluginContrib.relationships },
+  };
+
+  // Announce activated plugins
+  const activated = registry.listActivated();
+  if (activated.length > 0) {
+    console.log(`[CodeSense] Plugins activated: ${activated.join(', ')}`);
+  }
+
   // Clean existing database for fresh rebuild
   try { rmSync(dbPath, { recursive: true, force: true }); } catch { /* ignore */ }
   try { rmSync(dbPath + '.wal', { force: true }); } catch { /* ignore */ }
 
   const graph = new LbugGraph(dbPath);
-  await createSchema(graph, config);
+  await createSchema(graph, mergedConfig);
 
-  const scanned = await scanFiles(config, sourceRoot);
-
+  const scanned = await scanFiles(mergedConfig, sourceRoot);
 
   const entities: EntityInstance[] = [];
   const functions: FunctionDef[] = [];
   const frameworkAPIUsage: { fromFile: string; apiName: string; frameworkName: string }[] = [];
 
   // Collect all framework API names for detection
-  const frameworkAPIMap = new Map<string, string>(); // apiName → frameworkName
-  for (const fw of config.framework_apis ?? []) {
+  const frameworkAPIMap = new Map<string, string>();
+  for (const fw of mergedConfig.framework_apis ?? []) {
     for (const api of fw.api_list) {
       frameworkAPIMap.set(api, fw.name);
     }
@@ -70,7 +89,7 @@ export async function buildGraph(
     const result = await processFile(
       file.filePath,
       file.entityType,
-      config,
+      mergedConfig,
       frameworkAPIMap,
     );
     if (result) {
@@ -91,7 +110,6 @@ export async function buildGraph(
         await graph.execute(
           `CREATE (s:StoreItem {name: '${escapeStr(item.name)}', filePath: '${escapeStr(item.filePath)}', itemType: '${escapeStr(item.type)}', storePath: '${escapeStr(result.entity.filePath)}', properties: '${escapeStr(JSON.stringify(item.properties))}'})`,
         );
-        // Create has_item edge: Entity -> StoreItem
         await graph.execute(
           `MATCH (a:Entity {filePath: '${escapeStr(result.entity.filePath)}'}) MATCH (b:StoreItem {filePath: '${escapeStr(item.filePath)}'}) CREATE (a)-[:has_item]->(b)`,
         );
@@ -100,15 +118,11 @@ export async function buildGraph(
   }
 
   // Index framework API nodes
-  for (const fw of config.framework_apis ?? []) {
+  for (const fw of mergedConfig.framework_apis ?? []) {
     for (const apiName of fw.api_list) {
       try {
-        await graph.execute(
-          `CREATE (fw:FrameworkAPI {name: '${escapeStr(apiName)}'})`,
-        );
-      } catch {
-        // node may already exist
-      }
+        await graph.execute(`CREATE (fw:FrameworkAPI {name: '${escapeStr(apiName)}'})`);
+      } catch { /* node may already exist */ }
     }
   }
 
@@ -118,56 +132,39 @@ export async function buildGraph(
       await graph.execute(
         `MATCH (a:Entity {filePath: '${escapeStr(usage.fromFile)}'}) MATCH (b:FrameworkAPI {name: '${escapeStr(usage.apiName)}'}) CREATE (a)-[:USES_API]->(b)`,
       );
-    } catch {
-      // target may not exist
-    }
+    } catch { /* target may not exist */ }
   }
 
   const relations: RelationInstance[] = [];
 
-  // Config-defined relationships (create first so they take priority over imports)
-  for (const [relType, relDef] of Object.entries(config.relationships ?? {})) {
+  // Config-defined relationships
+  for (const [relType, relDef] of Object.entries(mergedConfig.relationships ?? {})) {
     if (relType === 'imports') continue;
-
-    const relEdges = await buildRelationshipEdges(
-      relType,
-      relDef,
-      entities,
-      config,
-    );
+    const relEdges = await buildRelationshipEdges(relType, relDef, entities, mergedConfig);
     for (const edge of relEdges) {
       relations.push(edge);
-      try {
-        await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties);
-      } catch {
-        // target may not exist
-      }
+      try { await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties); }
+      catch { /* target may not exist */ }
     }
   }
 
-  // Auto-detected imports (lower priority — skip if edge already exists)
+  // Auto-detected imports
   const importEdges = await buildImportEdges(entities, sourceRoot);
-
   for (const edge of importEdges) {
     relations.push(edge);
-    try {
-      await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties);
-    } catch {
-      // target may not exist
-    }
+    try { await graph.createRel(edge.fromId, edge.toId, edge.type, edge.properties); }
+    catch { /* target may not exist */ }
   }
 
-  // Index package.json if present
+  // Index package.json
   const packageJsonPath = join(dirname(sourceRoot), 'package.json');
   if (existsSync(packageJsonPath)) {
     try {
       const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
       const pkgInfo: Record<string, unknown> = {};
-
       if (pkg.name) pkgInfo.name = pkg.name;
       if (pkg.version) pkgInfo.version = pkg.version;
       if (pkg.dependencies) {
-        // Extract Vue-related deps
         const deps = pkg.dependencies as Record<string, string>;
         pkgInfo.vueVersion = deps['vue'] ?? deps['vue-demi'] ?? null;
         pkgInfo.hasPinia = 'pinia' in deps;
@@ -184,13 +181,10 @@ export async function buildGraph(
         pkgInfo.hasLint = 'lint' in (pkg.scripts as Record<string, string>);
         pkgInfo.hasTest = 'test' in (pkg.scripts as Record<string, string>);
       }
-
       await graph.execute(
         `CREATE (pkg:Entity {name: '${escapeStr(pkgInfo.name as string || 'unknown')}', filePath: '${escapeStr(packageJsonPath)}', entityType: 'package', properties: '${escapeStr(JSON.stringify(pkgInfo))}'})`,
       );
-    } catch {
-      // ignore invalid package.json
-    }
+    } catch { /* ignore invalid package.json */ }
   }
 
   // Write Function nodes
@@ -199,13 +193,10 @@ export async function buildGraph(
       await graph.execute(
         `CREATE (f:Function {id: '${escapeStr(fn.id)}', name: '${escapeStr(fn.name)}', filePath: '${escapeStr(fn.filePath)}', entityPath: '${escapeStr(fn.entityPath)}', kind: '${escapeStr(fn.kind)}', startLine: ${fn.startLine}, endLine: ${fn.endLine}, content: '${escapeStr(fn.content)}'})`,
       );
-      // Create defines edge: Entity -> Function
       await graph.execute(
         `MATCH (e:Entity {filePath: '${escapeStr(fn.entityPath)}'}) MATCH (f:Function {id: '${escapeStr(fn.id)}'}) CREATE (e)-[:defines]->(f)`,
       );
-    } catch {
-      // may already exist
-    }
+    } catch { /* may already exist */ }
   }
 
   // Build CALLS edges between functions
@@ -218,39 +209,34 @@ export async function buildGraph(
       funcByName.set(fn.name, list);
     }
 
-    let callEdgeCount = 0;
     for (const caller of functions) {
-      // Extract call expressions from function content
       const callPattern = /(?:^|[^\w])([\w$]+)\s*\(/g;
       let match: RegExpExecArray | null;
       const called: Set<string> = new Set();
       while ((match = callPattern.exec(caller.content)) !== null) {
         const calledName = match[1];
-        // Skip common non-function calls
         if (['if', 'switch', 'for', 'while', 'return', 'throw', 'typeof', 'instanceof', 'new', 'import', 'export', 'require', 'console', 'JSON', 'Math', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Promise', 'Map', 'Set', 'Ref', 'ComputedRef', 'parseInt', 'parseFloat', 'isNaN'].includes(calledName)) continue;
         if (!functionNames.has(calledName)) continue;
-        if (calledName === caller.name) continue; // skip self-calls for now
+        if (calledName === caller.name) continue;
         called.add(calledName);
       }
 
       for (const targetName of called) {
         const targets = funcByName.get(targetName);
         if (!targets) continue;
-
-        // Create CALLS edge to each target with same name
         for (const target of targets) {
           try {
             await graph.execute(
               `MATCH (a:Function {id: '${escapeStr(caller.id)}'}) MATCH (b:Function {id: '${escapeStr(target.id)}'}) CREATE (a)-[:CALLS {confidence: 0.7, callSite: '${escapeStr(caller.name + '→' + target.name)}'}]->(b)`,
             );
-            callEdgeCount++;
-          } catch {
-            // edge may already exist
-          }
+          } catch { /* edge may already exist */ }
         }
       }
     }
   }
+
+  // Plugin post-processing hook
+  await registry.afterGraphBuilt({ entities, relations, projectRoot, config: mergedConfig });
 
   await graph.close();
 
@@ -262,6 +248,8 @@ export async function buildGraph(
     edgeCount: relations.length,
   };
 }
+
+// ===== Process File =====
 
 interface ProcessFileResult {
   entity: EntityInstance;
@@ -280,67 +268,38 @@ async function processFile(
   const props: Record<string, unknown> = {};
   const apiUsage: { fromFile: string; apiName: string; frameworkName: string }[] = [];
   const storeItems: { name: string; filePath: string; type: string; properties: Record<string, unknown> }[] = [];
+  let functions: FunctionDef[] = [];
 
-  // Detect the source language for parser selection
   const defaultLang = detectLanguage(filePath);
-
-  // Parse source code for AST analysis
   let astRoot: SyntaxNode;
   let sfc: ReturnType<typeof parseSFC> | null = null;
 
+  // ── Plugin-based entity extraction ──
+  const registry = getRegistry();
+  const projectRoot = process.cwd();
+
+  const pluginResult = await registry.extractEntity({
+    filePath,
+    source,
+    astRoot: parseSource(source, defaultLang).rootNode, // temporary, may be replaced by plugin
+    entityType,
+    language: defaultLang,
+    config,
+    projectRoot,
+    sourceRoot: resolve(projectRoot, config.project.source_root),
+  });
+
+  Object.assign(props, pluginResult.properties);
+  apiUsage.push(...pluginResult.apiUsage);
+  storeItems.push(...pluginResult.storeItems);
+
+  // Re-parse with correct language if plugin modified understanding
   if (filePath.endsWith('.vue')) {
     sfc = parseSFC(source, filePath);
-    props.isVue = true;
-    props.usesScriptSetup = sfc.usesScriptSetup;
-
     if (sfc.mainScript) {
       const scriptLang = sfc.mainScript.attrs.includes('lang="ts"') || sfc.mainScript.attrs.includes("lang='ts'") ? 'ts' as const : 'js';
       const scriptContent = extractScriptContent(sfc.mainScript);
-      const tree = parseSource(scriptContent, scriptLang);
-      astRoot = tree.rootNode;
-
-      props.apiMode = detectApiMode(astRoot);
-
-      extractComponentName(astRoot, props);
-
-      // Detect store usage patterns
-      const storeCalls = collect(
-        astRoot,
-        (n) =>
-          n.type === 'call_expression' &&
-          (n.childForFieldName('function')?.text?.startsWith('use') ?? false),
-      );
-      if (storeCalls.length > 0) {
-        props.usesStore = true;
-        props.storeCalls = storeCalls.map(
-          (n) => n.childForFieldName('function')?.text ?? '',
-        );
-      }
-
-      const mapCalls = collect(
-        astRoot,
-        (n) =>
-          n.type === 'call_expression' &&
-          [
-            'mapState',
-            'mapActions',
-            'mapGetters',
-            'mapMutations',
-          ].includes(n.childForFieldName('function')?.text ?? ''),
-      );
-      if (mapCalls.length > 0) {
-        props.usesMapHelpers = true;
-        props.mapHelperCalls = mapCalls.map((n) => ({
-          helper: n.childForFieldName('function')?.text ?? '',
-          args: n.childForFieldName('arguments')?.text ?? '',
-        }));
-      }
-
-      // Detect composable usage (useXxx functions from composables)
-      detectComposableUsage(astRoot, props);
-
-      // Apply entity markers from config
-      applyEntityMarkers(props, sfc, entityType, config);
+      astRoot = parseSource(scriptContent, scriptLang).rootNode;
     } else {
       astRoot = parseSource(source, defaultLang).rootNode;
     }
@@ -354,161 +313,50 @@ async function processFile(
     props._imports = imports;
   }
 
-  // Framework API usage detection
+  // Generic framework API usage detection (works without vue plugin too)
   if (config.framework_apis?.length && frameworkAPIMap.size > 0) {
-    const importsFromFramework = imports.filter((imp) => {
-      for (const fw of config.framework_apis!) {
-        if (fw.sources.includes(imp.source)) return true;
+    const callNodes = collect(astRoot, isCallExpression);
+    for (const node of callNodes) {
+      const funcName = node.childForFieldName('function')?.text ?? '';
+      if (frameworkAPIMap.has(funcName)) {
+        apiUsage.push({
+          fromFile: filePath,
+          apiName: funcName,
+          frameworkName: frameworkAPIMap.get(funcName)!,
+        });
       }
-      return false;
-    });
-
-    if (importsFromFramework.length > 0) {
-      // Get all imported names from framework sources
-      const importedFrameworkNames = new Set<string>();
-      for (const imp of importsFromFramework) {
-        for (const name of imp.imports) {
-          importedFrameworkNames.add(name);
-        }
-      }
-
-      // Also detect calls to framework APIs (even without explicit named import,
-      // e.g., Vue 3 auto-imported functions)
-      const callNodes = collect(astRoot, isCallExpression);
-      for (const node of callNodes) {
-        const funcName = node.childForFieldName('function')?.text ?? '';
-        if (frameworkAPIMap.has(funcName)) {
-          apiUsage.push({
-            fromFile: filePath,
-            apiName: funcName,
-            frameworkName: frameworkAPIMap.get(funcName)!,
-          });
-        }
-      }
-
-      // Detect compiler macros in SFC script setup
-      if (config.framework_apis) {
-        for (const fw of config.framework_apis) {
-          if (fw.compiler_macros) {
-            for (const macro of fw.compiler_macros) {
-              const macroNodes = collect(
-                astRoot,
-                (n) => n.type === 'call_expression' && n.childForFieldName('function')?.text === macro,
-              );
-              for (const _ of macroNodes) {
-                apiUsage.push({
-                  fromFile: filePath,
-                  apiName: macro,
-                  frameworkName: fw.name,
-                });
-              }
-            }
+    }
+    // Compiler macros
+    for (const fw of config.framework_apis) {
+      if (fw.compiler_macros) {
+        for (const macro of fw.compiler_macros) {
+          const macroNodes = collect(
+            astRoot,
+            (n) => n.type === 'call_expression' && n.childForFieldName('function')?.text === macro,
+          );
+          for (const _ of macroNodes) {
+            apiUsage.push({ fromFile: filePath, apiName: macro, frameworkName: fw.name });
           }
         }
       }
-
-      // Store framework API info in properties
-      props.frameworkApiImports = Array.from(importedFrameworkNames);
     }
   }
 
-  // Store internal structure extraction
-  if (entityType === 'store') {
-    const storeInternals = extractStoreInternals(astRoot);
-    props.hasState = storeInternals.state.length > 0;
-    props.hasGetters = storeInternals.getters.length > 0;
-    props.hasActions = storeInternals.actions.length > 0;
-    props.hasMutations = storeInternals.mutations.length > 0;
-    props.stateKeys = storeInternals.state;
-    props.getterNames = storeInternals.getters;
-    props.actionNames = storeInternals.actions;
-    props.mutationNames = storeInternals.mutations;
-
-    // Create StoreItem nodes
-    for (const stateName of storeInternals.state) {
-      storeItems.push({
-        name: stateName,
-        filePath: `${filePath}#state:${stateName}`,
-        type: 'state',
-        properties: { kind: 'state', storePath: filePath },
-      });
-    }
-    for (const getterName of storeInternals.getters) {
-      storeItems.push({
-        name: getterName,
-        filePath: `${filePath}#getter:${getterName}`,
-        type: 'getter',
-        properties: { kind: 'getter', storePath: filePath },
-      });
-    }
-    for (const actionName of storeInternals.mutations) {
-      storeItems.push({
-        name: actionName,
-        filePath: `${filePath}#mutation:${actionName}`,
-        type: 'mutation',
-        properties: { kind: 'mutation', storePath: filePath },
-      });
-    }
-    for (const actionName of storeInternals.actions) {
-      storeItems.push({
-        name: actionName,
-        filePath: `${filePath}#action:${actionName}`,
-        type: 'action',
-        properties: { kind: 'action', storePath: filePath },
-      });
-    }
-
-    // Auto-detect store variants
-    const defineStoreCalls = collect(
-      astRoot,
-      (n) =>
-        n.type === 'call_expression' &&
-        n.childForFieldName('function')?.text === 'defineStore',
-    );
-    if (defineStoreCalls.length > 0) {
-      props.variant = 'pinia';
-    }
-
-    const vuexStores = collect(
-      astRoot,
-      (n) =>
-        n.type === 'new_expression' &&
-        n.text.includes('Store'),
-    );
-    if (vuexStores.length > 0) {
-      props.variant = 'vuex';
-    }
-  }
-
-  // Extract function/method definitions
-  const fileFunctions = extractFunctions(
-    astRoot,
+  // ── Plugin-based function classification ──
+  const classResult = registry.classifyFunctions({
     filePath,
     entityType,
-    sfc,
-  );
-
-  // Route file detection
-  if (entityType === 'route') {
-    const routeDefs = collect(
-      astRoot,
-      (n) =>
-        n.type === 'call_expression' &&
-        (n.childForFieldName('function')?.text === 'createRouter' ||
-         n.childForFieldName('function')?.text === 'new VueRouter'),
-    );
-    if (routeDefs.length > 0) {
-      props.isRouter = true;
-    }
-
-    // Extract route definitions
-    const routeEntries = extractRouteEntries(astRoot);
-    if (routeEntries.length > 0) {
-      props.routes = routeEntries;
-    }
+    astRoot,
+    sfc: sfc ? { usesScriptSetup: sfc.usesScriptSetup, mainScript: sfc.mainScript ? { attrs: sfc.mainScript.attrs } : undefined } : null,
+  });
+  if (classResult.functions.length > 0) {
+    functions = classResult.functions;
+  } else {
+    // Fallback: generic function extraction
+    functions = extractGenericFunctions(astRoot, filePath, entityType);
   }
 
-  // Extract JSDoc / @-annotations from comments
+  // Extract JSDoc annotations
   const annotations = extractAnnotations(source);
   if (Object.keys(annotations).length > 0) {
     for (const [key, value] of Object.entries(annotations)) {
@@ -517,82 +365,19 @@ async function processFile(
   }
 
   return {
-    entity: {
-      type: entityType,
-      id: filePath,
-      filePath,
-      properties: props,
-    },
+    entity: { type: entityType, id: filePath, filePath, properties: props },
     apiUsage,
     storeItems,
-    functions: fileFunctions,
+    functions,
   };
 }
 
-// ===== Entity Marker Application =====
+// ===== Generic Function Extraction (fallback when no plugin provides) =====
 
-function applyEntityMarkers(
-  props: Record<string, unknown>,
-  sfc: ReturnType<typeof parseSFC> | null,
-  entityType: string,
-  config: ResolvedConfig,
-): void {
-  const entityDef = config.all_entities[entityType];
-  if (!entityDef?.markers) return;
-
-  const markers = entityDef.markers;
-  for (const marker of markers) {
-    if (marker.uses_options_api !== undefined && sfc) {
-      props.usesOptionsAPI = marker.uses_options_api;
-      // Check if this is a pure options API component
-      const scriptContent = sfc.mainScript ? extractScriptContent(sfc.mainScript) : '';
-      const scriptLang = sfc.mainScript?.attrs.includes('lang="ts"') || sfc.mainScript?.attrs.includes("lang='ts'") ? 'ts' as const : 'js';
-      const isOptions = detectApiMode(
-        parseSource(scriptContent, scriptLang).rootNode,
-      ) === 'options';
-      if (marker.uses_options_api && isOptions) {
-        props.markedAsOptionsAPI = true;
-      }
-    }
-
-    if (marker.naming_pattern) {
-      const name = (props.name as string) ?? '';
-      const pattern = marker.naming_pattern;
-      // Convert naming_pattern glob to regex
-      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
-      props.matchesNamingPattern = regex.test(name);
-    }
-  }
-}
-
-// ===== Composable Detection =====
-
-function detectComposableUsage(
-  root: SyntaxNode,
-  props: Record<string, unknown>,
-): void {
-  const useCalls = collect(
-    root,
-    (n) =>
-      n.type === 'call_expression' &&
-      /^use[A-Z]/.test(n.childForFieldName('function')?.text ?? ''),
-  );
-
-  if (useCalls.length > 0) {
-    props.usesComposables = true;
-    props.composableCalls = useCalls.map(
-      (n) => n.childForFieldName('function')?.text ?? '',
-    );
-  }
-}
-
-// ===== Function/Method Extraction =====
-
-function extractFunctions(
+function extractGenericFunctions(
   root: SyntaxNode,
   filePath: string,
   entityType: string,
-  sfc: ReturnType<typeof parseSFC> | null,
 ): FunctionDef[] {
   const result: FunctionDef[] = [];
   const seen = new Set<string>();
@@ -607,471 +392,51 @@ function extractFunctions(
     const id = `${filePath}#${name}:${startLine}`;
     if (seen.has(id)) return;
     seen.add(id);
-
-    const content = node.text.length > 300
-      ? node.text.substring(0, 300) + '...'
-      : node.text;
-
-    result.push({
-      id,
-      name,
-      filePath,
-      entityPath: filePath,
-      kind,
-      startLine,
-      endLine,
-      content,
-    });
+    const content = node.text.length > 300 ? node.text.substring(0, 300) + '...' : node.text;
+    result.push({ id, name, filePath, entityPath: filePath, kind, startLine, endLine, content });
   }
 
-  // 1. <script setup> top-level functions and arrow functions
-  // function_declaration: function foo() { ... }
-  const funcDecls = collect(root, (n) => n.type === 'function_declaration');
-  for (const node of funcDecls) {
+  // function_declaration
+  for (const node of collect(root, (n) => n.type === 'function_declaration')) {
     const name = node.childForFieldName('name')?.text;
-    if (!name) continue;
-    // Skip anonymous and internal functions
-    if (name.startsWith('_') && name.length > 1) continue;
-    // Classify: composable functions (useXxx) are special
-    const isComposable = /^use[A-Z]/.test(name);
-    const kind = isComposable ? 'composable_function' :
-      entityType === 'store' ? 'store_action' : 'function';
-    addFn(name, kind, node.startPosition.row + 1, node.endPosition.row + 1, node);
+    if (!name || (name.startsWith('_') && name.length > 1)) continue;
+    addFn(name, 'function', node.startPosition.row + 1, node.endPosition.row + 1, node);
   }
 
-  // const foo = () => { ... } or const foo = function() { ... }
-  const varDecls = collect(root, (n) => n.type === 'lexical_declaration');
-  for (const decl of varDecls) {
+  // const/let foo = () => { ... } or function() { ... }
+  for (const decl of collect(root, (n) => n.type === 'lexical_declaration')) {
     for (const child of decl.namedChildren) {
       if (child.type !== 'variable_declarator') continue;
       const nameNode = child.childForFieldName('name');
       const valueNode = child.childForFieldName('value');
       if (!nameNode || !valueNode) continue;
       const name = nameNode.text;
+      if (name.startsWith('_') && name.length > 1) continue;
       const isArrow = valueNode.type === 'arrow_function';
       const isFuncExpr = valueNode.type === 'function';
       if (!isArrow && !isFuncExpr) continue;
-      if (name.startsWith('_') && name.length > 1) continue;
-
-      // Classify: composable functions (useXxx) are special
-      const isComposable = /^use[A-Z]/.test(name);
-      const kind = isComposable ? 'composable_function' :
-        entityType === 'store' ? 'store_action' : 'function';
-      addFn(name, kind, child.startPosition.row + 1, child.endPosition.row + 1, child);
-    }
-  }
-
-  // 2. Options API methods (inside export default { methods: { ... } })
-  const exportDefaults = collect(
-    root,
-    (n) => n.type === 'export_statement' && n.text.includes('default'),
-  );
-  for (const exp of exportDefaults) {
-    const objects = collect(exp, (n) => n.type === 'object');
-    for (const obj of objects) {
-      // Find methods key
-      for (const pair of obj.namedChildren) {
-        if (pair.type !== 'pair') continue;
-        const key = pair.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
-        if (key !== 'methods') continue;
-        const value = pair.childForFieldName('value');
-        if (!value || value.type !== 'object') continue;
-
-        // Extract method definitions from the methods object
-        for (const methodNode of value.namedChildren) {
-          if (methodNode.type === 'method_definition') {
-            const methodName = methodNode.childForFieldName('name')?.text;
-            if (!methodName) continue;
-            addFn(
-              methodName,
-              'method',
-              methodNode.startPosition.row + 1,
-              methodNode.endPosition.row + 1,
-              methodNode,
-            );
-          } else if (methodNode.type === 'pair') {
-            // foo: function() { ... }
-            const pairKey = methodNode.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
-            const pairValue = methodNode.childForFieldName('value');
-            if (!pairKey || !pairValue) continue;
-            if (pairValue.type === 'function' || pairValue.type === 'arrow_function') {
-              addFn(
-                pairKey,
-                'method',
-                pairValue.startPosition.row + 1,
-                pairValue.endPosition.row + 1,
-                pairValue,
-              );
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // 3. Store actions/mutations as functions
-  if (entityType === 'store') {
-    const defineStoreCalls = collect(
-      root,
-      (n) =>
-        n.type === 'call_expression' &&
-        n.childForFieldName('function')?.text === 'defineStore',
-    );
-
-    for (const callNode of defineStoreCalls) {
-      const args = callNode.childForFieldName('arguments');
-      if (!args) continue;
-
-      for (const child of args.namedChildren) {
-        if (child.type === 'object') {
-          // Options API store: { state, getters, actions, mutations }
-          for (const pair of child.namedChildren) {
-            if (pair.type !== 'pair') continue;
-            const key = pair.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
-            const val = pair.childForFieldName('value');
-            if (!key || !val || val.type !== 'object') continue;
-
-            const fnKind =
-              key === 'actions' ? 'store_action' as const
-              : key === 'mutations' ? 'store_mutation' as const
-              : null;
-            if (!fnKind) continue;
-
-            // Extract action/mutation functions
-            for (const entry of val.namedChildren) {
-              if (entry.type === 'method_definition') {
-                const nm = entry.childForFieldName('name')?.text;
-                if (!nm) continue;
-                addFn(nm, fnKind, entry.startPosition.row + 1, entry.endPosition.row + 1, entry);
-              } else if (entry.type === 'pair') {
-                const pairKey = entry.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
-                const pairVal = entry.childForFieldName('value');
-                if (!pairKey || !pairVal) continue;
-                if (pairVal.type === 'function' || pairVal.type === 'arrow_function') {
-                  addFn(pairKey, fnKind, pairVal.startPosition.row + 1, pairVal.endPosition.row + 1, pairVal);
-                }
-              }
-            }
-          }
-        } else if (child.type === 'arrow_function' || child.type === 'function') {
-          // Setup store: functions declared inside the setup body
-          const body = child.childForFieldName('body');
-          if (!body) continue;
-
-          // Top-level function declarations in setup body
-          const setupFuncs = collect(body, (n) => n.type === 'function_declaration');
-          for (const fn of setupFuncs) {
-            const nm = fn.childForFieldName('name')?.text;
-            if (!nm || (nm.startsWith('_') && nm.length > 1)) continue;
-            addFn(nm, 'store_action', fn.startPosition.row + 1, fn.endPosition.row + 1, fn);
-          }
-        }
-      }
+      addFn(name, 'function', child.startPosition.row + 1, child.endPosition.row + 1, child);
     }
   }
 
   return result;
-}
-
-// ===== Store Internal Structure Extraction =====
-
-interface StoreInternals {
-  state: string[];
-  getters: string[];
-  mutations: string[];
-  actions: string[];
-}
-
-function extractStoreInternals(root: SyntaxNode): StoreInternals {
-  const result: StoreInternals = { state: [], getters: [], mutations: [], actions: [] };
-
-  // Detect defineStore calls and extract options
-  const defineStoreCalls = collect(
-    root,
-    (n) =>
-      n.type === 'call_expression' &&
-      n.childForFieldName('function')?.text === 'defineStore',
-  );
-
-  for (const callNode of defineStoreCalls) {
-    const args = callNode.childForFieldName('arguments');
-    if (!args) continue;
-
-    // defineStore('name', { state: ..., getters: ..., actions: ... }) — Options API store
-    // defineStore('name', () => { ... return { ... } }) — Setup store
-    for (const child of args.namedChildren) {
-      if (child.type === 'object') {
-        extractObjectKeys(child, result);
-      } else if (child.type === 'arrow_function' || child.type === 'function') {
-        // Setup store: look for return statement with object
-        const body = child.childForFieldName('body');
-        if (body) {
-          const returnStmts = collect(body, (n) => n.type === 'return_statement');
-          for (const ret of returnStmts) {
-            for (const retChild of ret.namedChildren) {
-              if (retChild.type === 'object') {
-                extractSetupStoreReturn(retChild, result, body);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // For Vuex stores: look for { state: {...}, mutations: {...}, ... }
-  if (result.state.length === 0 && result.getters.length === 0) {
-    const objects = collect(root, (n) => n.type === 'object');
-    for (const obj of objects) {
-      extractObjectKeys(obj, result);
-    }
-  }
-
-  // Deduplicate
-  result.state = [...new Set(result.state)];
-  result.getters = [...new Set(result.getters)];
-  result.mutations = [...new Set(result.mutations)];
-  result.actions = [...new Set(result.actions)];
-
-  return result;
-}
-
-function extractSetupStoreReturn(
-  objNode: SyntaxNode,
-  result: StoreInternals,
-  bodyNode: SyntaxNode,
-): void {
-  for (const child of objNode.namedChildren) {
-    if (child.type === 'pair' || child.type === 'shorthand_property_identifier') {
-      const key = child.type === 'pair'
-        ? child.childForFieldName('key')?.text
-        : child.text;
-      const value = child.type === 'pair' ? child.childForFieldName('value') : null;
-      if (!key) continue;
-
-      // For setup stores, we need to trace the definition back to determine the type
-      // Look for the variable declaration that defines this key
-      const isRef = isSetupStoreRef(key, bodyNode);
-      const isComputed = isSetupStoreComputed(key, bodyNode);
-      const isFunction = isSetupStoreFunction(key, bodyNode);
-
-      if (isRef) result.state.push(key);
-      else if (isComputed) result.getters.push(key);
-      else if (isFunction) result.actions.push(key);
-      // Fallback: check if the value in the return object looks like a ref/computed/function
-      else if (value) {
-        const valText = value.text;
-        if (valText.startsWith('ref(') || valText.startsWith('reactive(')) result.state.push(key);
-        else if (valText.startsWith('computed(')) result.getters.push(key);
-        else if (isIdentifier(value)) result.actions.push(key);
-      }
-    }
-  }
-}
-
-function isIdentifier(node: import('web-tree-sitter').SyntaxNode): boolean {
-  return node.type === 'identifier' || node.type === 'call_expression' || node.type === 'arrow_function';
-}
-
-function isSetupStoreRef(name: string, bodyNode: import('web-tree-sitter').SyntaxNode): boolean {
-  const decls = collect(
-    bodyNode,
-    (n) =>
-      (n.type === 'variable_declarator' || n.type === 'lexical_declaration') &&
-      n.text.includes(name) &&
-      (n.text.includes('ref(') || n.text.includes('reactive(')),
-  );
-  return decls.length > 0;
-}
-
-function isSetupStoreComputed(name: string, bodyNode: import('web-tree-sitter').SyntaxNode): boolean {
-  const decls = collect(
-    bodyNode,
-    (n) =>
-      (n.type === 'variable_declarator' || n.type === 'lexical_declaration') &&
-      n.text.includes(name) &&
-      n.text.includes('computed('),
-  );
-  return decls.length > 0;
-}
-
-function isSetupStoreFunction(name: string, bodyNode: import('web-tree-sitter').SyntaxNode): boolean {
-  const funcs = collect(
-    bodyNode,
-    (n) =>
-      n.type === 'function_declaration' && n.childForFieldName('name')?.text === name,
-  );
-  return funcs.length > 0;
-}
-
-function extractObjectKeys(
-  objNode: SyntaxNode,
-  result: StoreInternals,
-): void {
-  const knownKeys = new Set(['state', 'getters', 'mutations', 'actions']);
-  for (const child of objNode.namedChildren) {
-    if (child.type === 'pair') {
-      const key = child.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
-      const value = child.childForFieldName('value');
-      if (!key || !value) continue;
-
-      if (knownKeys.has(key) && value.type === 'object') {
-        const keys = extractObjectPropertyKeys(value);
-        if (key === 'state') result.state.push(...keys);
-        if (key === 'getters') result.getters.push(...keys);
-        if (key === 'mutations') result.mutations.push(...keys);
-        if (key === 'actions') result.actions.push(...keys);
-      }
-    }
-  }
-}
-
-function extractObjectPropertyKeys(objNode: SyntaxNode): string[] {
-  const keys: string[] = [];
-  for (const child of objNode.namedChildren) {
-    if (child.type === 'pair') {
-      const key = child.childForFieldName('key')?.text;
-      if (key) {
-        keys.push(key.replace(/^['"]|['"]$/g, ''));
-      }
-    }
-    // Also handle method definitions
-    if (child.type === 'method_definition' || child.type === 'public_field_definition') {
-      const name = child.childForFieldName('name')?.text;
-      if (name) keys.push(name);
-    }
-  }
-  return keys;
-}
-
-// ===== Route Entry Extraction =====
-
-interface RouteEntry {
-  path?: string;
-  name?: string;
-  component?: string;
-}
-
-function extractRouteEntries(root: SyntaxNode): RouteEntry[] {
-  const routes: RouteEntry[] = [];
-  // Look for array expressions that contain route objects
-  const arrays = collect(root, (n) => n.type === 'array');
-  for (const arr of arrays) {
-    for (const child of arr.namedChildren) {
-      if (child.type === 'object') {
-        const entry: RouteEntry = {};
-        for (const pair of child.namedChildren) {
-          if (pair.type === 'pair') {
-            const key = pair.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
-            const value = pair.childForFieldName('value');
-            if (key === 'path' && value?.type === 'string') {
-              entry.path = value.text.replace(/^['"]|['"]$/g, '');
-            } else if (key === 'name' && value?.type === 'string') {
-              entry.name = value.text.replace(/^['"]|['"]$/g, '');
-            } else if (key === 'component') {
-              entry.component = value?.text;
-            }
-          }
-        }
-        if (entry.path || entry.name) routes.push(entry);
-      }
-    }
-  }
-  return routes;
 }
 
 // ===== Annotation Extraction =====
 
 function extractAnnotations(source: string): Record<string, string> {
   const result: Record<string, string> = {};
-  // Match JSDoc-style @tag: value or @tag value
   const annotationRegex = /(?:@)(\w+(?:-\w+)*)\s*:?\s*(\S[^\n]*?(?=\s*@|\s*\*\/|\s*\n\s*\*\/|\n\s*$|$))/gm;
   let match;
   while ((match = annotationRegex.exec(source)) !== null) {
     const tag = match[1];
     const value = match[2].trim();
-    if (!result[tag]) {
-      result[tag] = value;
-    }
+    if (!result[tag]) result[tag] = value;
   }
   return result;
 }
 
-// ===== Existing helpers (kept with improvements) =====
-
-function detectApiMode(root: SyntaxNode): string {
-  const compositionAPIs = [
-    'ref', 'computed', 'watch', 'onMounted', 'reactive',
-  ];
-  const hasSetup = collect(
-    root,
-    (n) =>
-      n.type === 'call_expression' &&
-      compositionAPIs.includes(
-        n.childForFieldName('function')?.text ?? '',
-      ),
-  );
-
-  const hasOptionsAPI = collect(
-    root,
-    (n) =>
-      n.type === 'export_statement' && n.text.includes('default'),
-  );
-
-  if (hasSetup.length > 0 && hasOptionsAPI.length > 0) return 'mixed';
-  if (hasSetup.length > 0) return 'composition';
-  if (hasOptionsAPI.length > 0) return 'options';
-  return 'unknown';
-}
-
-function extractComponentName(
-  root: SyntaxNode,
-  props: Record<string, unknown>,
-): void {
-  const exportNodes = collect(
-    root,
-    (n) =>
-      n.type === 'export_statement' && n.text.includes('default'),
-  );
-
-  for (const node of exportNodes) {
-    for (const child of node.namedChildren) {
-      if (child.type === 'object' || child.type === 'object_literal') {
-        for (const pair of child.namedChildren) {
-          if (pair.type === 'pair') {
-            const key = pair.childForFieldName('key');
-            const value = pair.childForFieldName('value');
-            if (key?.text === 'name' && value?.type === 'string') {
-              props.name = value.text.replace(/^['"]|['"]$/g, '');
-            }
-          }
-        }
-      }
-      // Handle defineComponent({ name: '...', ... })
-      if (child.type === 'call_expression') {
-        const func = child.childForFieldName('function');
-        if (func?.text === 'defineComponent') {
-          const args = child.childForFieldName('arguments');
-          if (args) {
-            for (const arg of args.namedChildren) {
-              if (arg.type === 'object') {
-                for (const pair of arg.namedChildren) {
-                  if (pair.type === 'pair') {
-                    const key = pair.childForFieldName('key');
-                    const value = pair.childForFieldName('value');
-                    if (key?.text === 'name' && value?.type === 'string') {
-                      props.name = value.text.replace(/^['"]|['"]$/g, '');
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
+// ===== Import Extraction =====
 
 interface ImportInfo {
   source: string;
@@ -1103,15 +468,13 @@ function extractImports(root: SyntaxNode): ImportInfo[] {
       }
     }
 
-    results.push({
-      source,
-      imports: names,
-      isDefault: node.text.includes('import ') && !node.text.includes('{'),
-    });
+    results.push({ source, imports: names, isDefault: node.text.includes('import ') && !node.text.includes('{') });
   }
 
   return results;
 }
+
+// ===== Import Edge Building =====
 
 async function buildImportEdges(
   entities: EntityInstance[],
@@ -1125,11 +488,7 @@ async function buildImportEdges(
     if (!imports) continue;
 
     for (const imp of imports) {
-      const resolved = resolveImportPath(
-        entity.filePath,
-        imp.source,
-        sourceRoot,
-      );
+      const resolved = resolveImportPath(entity.filePath, imp.source, sourceRoot);
       if (resolved && entityFiles.has(resolved)) {
         relations.push({
           type: 'imports',
@@ -1149,59 +508,46 @@ function resolveImportPath(
   importSource: string,
   sourceRoot: string,
 ): string | null {
-  // Normalize paths to forward slashes for cross-platform consistency
   const toForwardSlash = (p: string) => p.replace(/\\/g, '/');
 
-  // Relative imports: ./foo, ../bar
   if (importSource.startsWith('.')) {
     const dir = dirname(fromFile);
     const basePath = resolve(dir, importSource);
-    for (const ext of [
-      '', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue',
-    ]) {
+    for (const ext of ['', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue']) {
       const tryPath = basePath + ext;
       if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
     return null;
   }
 
-  // @/ alias → source root
   if (importSource.startsWith('@/')) {
     const relative = importSource.slice(2);
     const basePath = resolve(sourceRoot, relative);
-    for (const ext of [
-      '', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue',
-    ]) {
+    for (const ext of ['', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue']) {
       const tryPath = basePath + ext;
       if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
     return null;
   }
 
-  // ~/ alias → project root (parent of source root)
   if (importSource.startsWith('~/')) {
     const projectRoot = dirname(sourceRoot);
     const relative = importSource.slice(2);
     const basePath = resolve(projectRoot, relative);
-    for (const ext of [
-      '', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue',
-    ]) {
+    for (const ext of ['', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue']) {
       const tryPath = basePath + ext;
       if (existsSync(tryPath)) return toForwardSlash(tryPath);
     }
     return null;
   }
 
-  // Try tsconfig.json path aliases
   const aliases = readTsconfigAliases(sourceRoot);
   for (const [alias, paths] of Object.entries(aliases)) {
     if (importSource.startsWith(alias)) {
       const relative = importSource.slice(alias.length);
       for (const base of paths) {
         const basePath = resolve(sourceRoot, base.replace(/\*$/, ''), relative);
-        for (const ext of [
-          '', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue',
-        ]) {
+        for (const ext of ['', '.vue', '.ts', '.js', '.jsx', '.tsx', '/index.ts', '/index.js', '/index.vue']) {
           const tryPath = basePath + ext;
           if (existsSync(tryPath)) return toForwardSlash(tryPath);
         }
@@ -1215,7 +561,6 @@ function resolveImportPath(
 function readTsconfigAliases(sourceRoot: string): Record<string, string[]> {
   const tsconfigPath = join(dirname(sourceRoot), 'tsconfig.json');
   if (!existsSync(tsconfigPath)) {
-    // Also try one level up
     const parent = join(dirname(dirname(sourceRoot)), 'tsconfig.json');
     if (!existsSync(parent)) return {};
     return extractTsconfigPaths(readJsonFile(parent));
@@ -1224,11 +569,8 @@ function readTsconfigAliases(sourceRoot: string): Record<string, string[]> {
 }
 
 function readJsonFile(path: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8'));
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(readFileSync(path, 'utf-8')); }
+  catch { return null; }
 }
 
 function extractTsconfigPaths(tsconfig: Record<string, unknown> | null): Record<string, string[]> {
@@ -1238,12 +580,13 @@ function extractTsconfigPaths(tsconfig: Record<string, unknown> | null): Record<
   const paths = compilerOptions.paths as Record<string, string[]>;
   const result: Record<string, string[]> = {};
   for (const [alias, targets] of Object.entries(paths)) {
-    // Convert tsconfig path: "@/*" → "@/"
     const simple = alias.replace(/\/\*$/, '/');
     result[simple] = targets.map(t => t.replace(/\/\*$/, '/'));
   }
   return result;
 }
+
+// ===== Relationship Edge Building =====
 
 async function buildRelationshipEdges(
   relType: string,
@@ -1255,9 +598,6 @@ async function buildRelationshipEdges(
   const fromEntities = entities.filter((e) => e.type === relDef.from);
   const toEntities = entities.filter((e) => e.type === relDef.to);
 
-
-  if (relType === 'route_to_component') {
-    }
   if (fromEntities.length === 0 || toEntities.length === 0) return [];
 
   const detectors = relDef.detect_by ?? [];
@@ -1267,9 +607,7 @@ async function buildRelationshipEdges(
 
   for (const fromEntity of fromEntities) {
     const source = readFileSync(fromEntity.filePath, 'utf-8');
-    const sfc = fromEntity.filePath.endsWith('.vue')
-      ? parseSFC(source, fromEntity.filePath)
-      : null;
+    const sfc = fromEntity.filePath.endsWith('.vue') ? parseSFC(source, fromEntity.filePath) : null;
 
     for (const detectCfg of detectors) {
       const detector = getDetector(detectCfg.type);
@@ -1287,19 +625,16 @@ async function buildRelationshipEdges(
       const ctx: DetectorContext = {
         source,
         root: astRoot,
-        templateContent: sfc?.blocks.find((b) => b.type === 'template')
-          ?.content,
+        templateContent: sfc?.blocks.find((b) => b.type === 'template')?.content,
         scriptContent: sfc?.mainScript?.content,
       };
 
-      const matches = detector.detect(ctx, {
-        pattern: detectCfg.pattern,
-      });
+      const matches = detector.detect(ctx, { pattern: detectCfg.pattern });
 
       for (const match of matches) {
         for (const toEntity of toEntities) {
           if (matchMatchesEntity(match, toEntity, detectCfg.type)) {
-                      relations.push({
+            relations.push({
               type: relType,
               fromId: fromEntity.filePath,
               toId: toEntity.filePath,
@@ -1320,32 +655,22 @@ function matchMatchesEntity(
   detectorType: string,
 ): boolean {
   const entityName = (entity.properties.name as string) ?? '';
-  // Normalize to forward slashes for cross-platform consistent splits
   const entityPath = entity.filePath.replace(/\\/g, '/');
 
   if (detectorType === 'call_expression') {
     const callee = String(match.callee ?? '');
     const cleanEntityName = entityName.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
     const cleanCallee = callee.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
-    // Exact name match: useUserStore ↔ user
-    if (cleanCallee.includes(cleanEntityName) && cleanEntityName.length > 1) {
-      return true;
-    }
-    // Reverse: entityName contains callee
-    if (cleanEntityName.includes(cleanCallee) && cleanCallee.length > 1) {
-      return true;
-    }
-    // UseXxxStore → extract xxx, match against basename
+
+    if (cleanCallee.includes(cleanEntityName) && cleanEntityName.length > 1) return true;
+    if (cleanEntityName.includes(cleanCallee) && cleanCallee.length > 1) return true;
+
     const calleeCore = callee.replace(/^use/, '').replace(/Store$/i, '').toLowerCase();
     if (calleeCore.length > 2) {
       const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
-      if (basename.includes(calleeCore) || calleeCore.includes(basename)) {
-        return true;
-      }
+      if (basename.includes(calleeCore) || calleeCore.includes(basename)) return true;
     }
-    // Vuex mapState/mapMutations: extract module name from args
-    // e.g. mapState('cart', [...]) → module = 'cart'
-    // e.g. mapMutations({ del: 'cart/DEL' }) → module = 'cart'
+
     if (['mapState', 'mapGetters', 'mapMutations', 'mapActions'].includes(callee)) {
       const args = match.arguments as string[] | undefined;
       if (args && args.length > 0) {
@@ -1361,7 +686,6 @@ function matchMatchesEntity(
   }
 
   if (detectorType === 'member_expression') {
-    // $store.commit/dispatch: extract module from arguments
     const memberText = String(match.member ?? match.callee ?? '');
     if (memberText.includes('$store') || memberText.includes('store')) {
       const args = match.arguments as string[] | undefined;
@@ -1369,16 +693,14 @@ function matchMatchesEntity(
         for (const arg of args) {
           const mod = arg.replace(/['"]/g, '').split('/')[0].toLowerCase();
           const basename = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '').toLowerCase() ?? '';
-          if (basename === mod || mod.length > 1 && basename.includes(mod)) {
-            return true;
-          }
+          if (basename === mod || mod.length > 1 && basename.includes(mod)) return true;
         }
       }
     }
     return entity.type.toLowerCase().includes('store');
   }
 
-    if (detectorType === 'import_expression') {
+  if (detectorType === 'import_expression') {
     const importPath = String(match.importPath ?? match.callee ?? '').replace(/['"]/g, '');
     if (importPath) {
       const normalizedImport = importPath.replace(/\\/g, '/');
@@ -1396,15 +718,12 @@ function extractVuexModules(args: string[]): string[] {
   const modules = new Set<string>();
   for (const arg of args) {
     if (!arg) continue;
-    // String literal: 'cart' or 'cart/DEL_COLLECTION'
     const cleaned = arg.replace(/^['"]|['"]$/g, '').trim();
     if (cleaned.includes('/')) {
       modules.add(cleaned.split('/')[0].toLowerCase());
     } else if (!cleaned.startsWith('[') && !cleaned.startsWith('{')) {
-      // Plain module name: 'cart'
       modules.add(cleaned.toLowerCase());
     }
-    // Object with keys like { delCollection: 'cart/DEL_COLLECTION' }
     if (arg.startsWith('{')) {
       const matches = arg.matchAll(/['"]([^'"]+)['"]\s*:\s*['"]([^'"]+)['"]/g);
       for (const m of matches) {

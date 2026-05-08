@@ -54,7 +54,8 @@ export async function buildGraph(
   // ── Activate plugins ──
   const registry = getRegistry();
   const projectRoot = process.cwd();
-  const pluginContrib = await registry.activate(projectRoot);
+  // Use sourceRoot for plugin detection so plugins can find .vue files etc.
+  const pluginContrib = await registry.activate(sourceRoot);
 
   // Merge plugin contributions into config
   const mergedConfig: ResolvedConfig = {
@@ -306,7 +307,7 @@ export async function buildGraph(
   }
 
   // Plugin post-processing hook
-  await registry.afterGraphBuilt({ entities, relations, projectRoot, config: mergedConfig });
+  await registry.afterGraphBuilt({ entities, relations, graph, projectRoot, config: mergedConfig });
 
   await graph.close();
 

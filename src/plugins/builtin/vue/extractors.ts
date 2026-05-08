@@ -45,6 +45,7 @@ export function extractVueEntity(ctx: EntityExtractionContext): EntityExtraction
       detectStoreUsage(astRoot, props);
       detectMapHelpers(astRoot, props);
       detectComposableUsage(astRoot, props);
+      detectMixins(astRoot, props);
       applyMarkers(props, sfc, ctx);
     }
   }
@@ -157,6 +158,37 @@ function detectComposableUsage(root: SyntaxNode, props: Record<string, unknown>)
   if (useCalls.length > 0) {
     props.usesComposables = true;
     props.composableCalls = useCalls.map((n) => n.childForFieldName('function')?.text ?? '');
+  }
+}
+
+// ── Mixin Detection ──
+
+function detectMixins(root: SyntaxNode, props: Record<string, unknown>): void {
+  const exportNodes = collect(
+    root,
+    (n) => n.type === 'export_statement' && n.text.includes('default'),
+  );
+  for (const node of exportNodes) {
+    for (const obj of collect(node, (n) => n.type === 'object' || n.type === 'object_literal')) {
+      for (const pair of obj.namedChildren) {
+        if (pair.type !== 'pair') continue;
+        const key = pair.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
+        if (key !== 'mixins') continue;
+        const value = pair.childForFieldName('value');
+        if (!value || value.type !== 'array') continue;
+
+        const mixinNames: string[] = [];
+        for (const elem of value.namedChildren) {
+          if (elem.type === 'identifier') {
+            mixinNames.push(elem.text);
+          }
+        }
+        if (mixinNames.length > 0) {
+          props.usesMixins = true;
+          props.mixinNames = mixinNames;
+        }
+      }
+    }
   }
 }
 

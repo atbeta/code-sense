@@ -64,15 +64,6 @@ export class LbugGraph {
     if (this.createdRels.has(key)) return;
     this.createdRels.add(key);
 
-    // LadybugDB only allows ONE edge (of any type) between a node pair.
-    // Check if any edge already exists before creating.
-    const existing = await this.query(`
-      MATCH (a:Entity {filePath: ${escapeCypher(fromPath)}})-[r]->(b:Entity {filePath: ${escapeCypher(toPath)}})
-      RETURN r
-      LIMIT 1
-    `);
-    if (existing.length > 0) return;
-
     const propsStr = relProps ? `{properties: ${escapeCypher(JSON.stringify(relProps))}}` : '';
     await this.execute(`
       MATCH (a:Entity {filePath: ${escapeCypher(fromPath)}})

@@ -1,0 +1,10 @@
+{
+  "name": "test-fixture",
+  "private": true,
+  "dependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0",
+    "pinia": "^2.1.0",
+    "vuex": "^4.1.0"
+  }
+}

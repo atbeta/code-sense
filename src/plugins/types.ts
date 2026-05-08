@@ -91,6 +91,8 @@ export interface FunctionExtractionResult {
 export interface GraphPostProcessContext {
   entities: EntityInstance[];
   relations: RelationInstance[];
+  /** LadybugDB graph instance for direct queries and edge creation */
+  graph: import('../graph/lbug.js').LbugGraph;
   /** Project root (config dir) */
   projectRoot: string;
   /** Resolved config */

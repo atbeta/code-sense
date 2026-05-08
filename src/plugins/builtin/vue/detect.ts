@@ -4,6 +4,7 @@
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import fg from 'fast-glob';
 import type { DetectionResult, DetectionSignal } from '../../types.js';
 import { VUE_ENTITIES, VUE_FRAMEWORK_APIS, VUE_RELATIONSHIPS } from '../vue/entities.js';
 
@@ -51,14 +52,39 @@ export async function detectVue(projectRoot: string): Promise<DetectionResult> {
   }
 
   // If vue is a direct dependency, it's definitely a Vue project
-  const hasVue = signals.some((s) => s.value.startsWith('vue@'));
+  const hasVueInPackage = signals.some((s) => s.value.startsWith('vue@'));
+
+  // Fallback: check for .vue files in the project (even without vue in package.json)
+  let hasVueFiles = false;
+  if (!hasVueInPackage) {
+    try {
+      const vueFiles = await fg('**/*.vue', {
+        cwd: projectRoot,
+        ignore: ['node_modules/**'],
+        onlyFiles: true,
+        deep: 2,
+      });
+      if (vueFiles.length > 0) {
+        hasVueFiles = true;
+        signals.push({
+          type: 'file_pattern',
+          value: `${vueFiles.length} .vue files found`,
+          description: 'Vue SFC files detected in project',
+        });
+      }
+    } catch {
+      // glob may fail
+    }
+  }
+
+  const matched = hasVueInPackage || hasVueFiles;
 
   return {
-    matched: hasVue,
-    confidence: hasVue ? 1.0 : 0,
+    matched,
+    confidence: hasVueInPackage ? 1.0 : hasVueFiles ? 0.7 : 0,
     signals,
-    entities: hasVue ? VUE_ENTITIES : undefined,
-    frameworkAPIs: hasVue ? VUE_FRAMEWORK_APIS : undefined,
-    relationships: hasVue ? VUE_RELATIONSHIPS : undefined,
+    entities: matched ? VUE_ENTITIES : undefined,
+    frameworkAPIs: matched ? VUE_FRAMEWORK_APIS : undefined,
+    relationships: matched ? VUE_RELATIONSHIPS : undefined,
   };
 }

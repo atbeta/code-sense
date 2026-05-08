@@ -83,6 +83,16 @@ export const VUE_ENTITIES: Record<string, EntityDefinition> = {
     ],
     description: 'Vue page/route component',
   },
+
+  mixin: {
+    patterns: ['mixins/**/*.ts', 'mixins/**/*.js', 'mixins/**/*.vue'],
+    properties: [
+      { name: 'name', extract: 'file_name' },
+      { name: 'filePath', extract: 'file_path' },
+      { name: 'category', extract: 'file_category' },
+    ],
+    description: 'Vue component mixin (shared Options API logic)',
+  },
 };
 
 export const VUE_FRAMEWORK_APIS: FrameworkAPI[] = [
@@ -196,5 +206,12 @@ export const VUE_RELATIONSHIPS: Record<string, RelationshipDefinition> = {
         pattern: 'use[A-Z]\\w+',
       },
     ],
+  },
+
+  uses_mixin: {
+    description: 'Component uses a mixin via mixins: [...] declaration (resolved in post-processing)',
+    from: 'component',
+    to: 'mixin',
+    detect_by: [],
   },
 };

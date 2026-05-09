@@ -1,6 +1,6 @@
 {
   "name": "@code-sense/core",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Config-driven code knowledge graph for Vue projects — tree-sitter AST parsing, MCP server for AI agents, Sigma.js visualization",
   "type": "module",
   "main": "dist/index.js",

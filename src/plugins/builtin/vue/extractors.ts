@@ -24,6 +24,7 @@ import {
 
 export function extractVueEntity(ctx: EntityExtractionContext): EntityExtractionResult {
   const props: Record<string, unknown> = {};
+  props.filePath = ctx.filePath; // needed for StoreItem primary key construction
   const apiUsage: EntityExtractionResult['apiUsage'] = [];
   const storeItems: EntityExtractionResult['storeItems'] = [];
 

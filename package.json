@@ -1,6 +1,6 @@
 {
   "name": "@code-sense/core",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Config-driven code knowledge graph for Vue projects — tree-sitter AST parsing, MCP server for AI agents, Sigma.js visualization",
   "type": "module",
   "main": "dist/index.js",
@@ -30,7 +30,6 @@
   ],
   "license": "MIT",
   "author": "CodeSense Contributors",
-  "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -39,12 +38,12 @@
     "serve": "node dist/index.js serve",
     "view": "node dist/index.js view",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "rebuild": "pnpm clean && pnpm build",
+    "rebuild": "npm run clean && npm run build",
     "lint": "eslint src/",
     "lint:fix": "eslint --fix src/",
     "format": "prettier --check 'src/**/*.ts'",
     "format:fix": "prettier --write 'src/**/*.ts'",
-    "check": "pnpm lint && pnpm format && pnpm build",
+    "check": "npm run lint && npm run format && npm run build",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {

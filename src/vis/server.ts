@@ -275,12 +275,12 @@ var EDGE_WIDTH = {
 };
 
 var NODE_SIZES = {
-  component: 9,
-  store: 8,
-  route: 7,
-  composable: 6,
-  legacy_module: 9,
-  chart_component: 8,
+  component: 5,
+  store: 4.5,
+  route: 4,
+  composable: 3.5,
+  legacy_module: 5,
+  chart_component: 5,
 };
 
 var INCOMING_COLOR = '#f0883e';  // warm orange for incoming
@@ -299,7 +299,7 @@ var layoutRunning = false;
 function typeColor(t) { return TYPE_COLORS[t] || '#6e7681'; }
 function edgeColor(t) { return EDGE_COLORS[t] || '#8b949e'; }
 function edgeWidth(t) { return EDGE_WIDTH[t] || 0.5; }
-function nodeSize(t) { return NODE_SIZES[t] || 6; }
+function nodeSize(t) { return NODE_SIZES[t] || 4; }
 function shortPath(p) {
   var parts = p.split(sep);
   return parts.length > 3 ? '...' + sep + parts.slice(-3).join(sep) : p;
@@ -934,7 +934,7 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
     defaultEdgeType: 'arrow',
     labelDensity: 0.07,
     labelGridCellSize: 70,
-    labelRenderedSizeThreshold: 6,
+    labelRenderedSizeThreshold: 4,
     labelFont: 'JetBrains Mono,monospace',
     labelColor: { attribute: 'labelColor' },
     labelSize: 12,

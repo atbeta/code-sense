@@ -10,6 +10,9 @@ Inspired by [GitNexus](https://github.com/abhigyanpatwari/GitNexus), focused spe
 # Initialize config for your project
 npx @code-sense/core init
 
+# Or answer a few questions to generate a Vue/Electron-aware config
+npx @code-sense/core init --interactive
+
 # Index your codebase
 npx @code-sense/core index
 
@@ -53,77 +56,79 @@ Everything is driven by `codesense.yaml`:
 
 ```yaml
 project:
-  name: "my-app"
-  source_root: "src"
+  name: 'my-app'
+  source_root: 'src'
 
 entities:
   component:
-    patterns: ["**/*.vue"]
+    patterns: ['**/*.vue']
   store:
     patterns:
-      - "src/store/**/*.ts"
-      - "src/stores/**/*.ts"
+      - 'src/store/**/*.ts'
+      - 'src/stores/**/*.ts'
   route:
     patterns:
-      - "src/router/**/*.ts"
+      - 'src/router/**/*.ts'
 
 framework_apis:
-  - name: "vue"
-    sources: ["vue"]
-    api_list: ["ref", "computed", "watch", "onMounted", ...]
+  - name: 'vue'
+    sources: ['vue']
+    api_list: ['ref', 'computed', 'watch', 'onMounted', ...]
 
 relationships:
   uses_store:
-    from: "component"
-    to: "store"
+    from: 'component'
+    to: 'store'
     detect_by:
-      - type: "call_expression"
-        pattern: "use*Store"       # Pinia
-      - type: "call_expression"
-        pattern: "mapState"        # Vuex
-      - type: "call_expression"
-        pattern: "mapMutations"
-      - type: "member_expression"
-        pattern: "$store.*"
+      - type: 'call_expression'
+        pattern: 'use*Store' # Pinia
+      - type: 'call_expression'
+        pattern: 'mapState' # Vuex
+      - type: 'call_expression'
+        pattern: 'mapMutations'
+      - type: 'member_expression'
+        pattern: '$store.*'
 ```
 
 Example configs for common scenarios:
+
 - `codesense.legacy.yaml` — Vue 2.7 + vue-demi + Vuex/Pinia mix
 - `codesense.modern.yaml` — Pure Vue 3 + Pinia + composables
 - `codesense.test.yaml` — Test fixtures with both Pinia and Vuex patterns
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `index` | Build the knowledge graph |
-| `view`  | Start visualization server (default port 3456) |
-| `serve` | Run MCP server for AI agent integration |
-| `init`  | Scaffold a default codesense.yaml |
+| Command              | Description                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `index`              | Build the knowledge graph                                                                       |
+| `view`               | Start visualization server (default port 3456)                                                  |
+| `serve`              | Run MCP server for AI agent integration                                                         |
+| `init`               | Scaffold a default codesense.yaml                                                               |
+| `init --interactive` | Scaffold a fuller config with Vue Router, stores, composables, mixins, and Electron IPC options |
 
 ## MCP Tools
 
-| Tool | What it answers |
-|------|----------------|
-| `entity_context` | "What is this file?" — full Vue-aware context, store internals, defined functions |
-| `function_context` | "Who calls this function?" — callers, callees, siblings with AST-level accuracy |
-| `impact_analysis` | "If I change this file, what breaks?" — bidirectional BFS traversal |
-| `diff_impact` | "What changed in this git diff?" — function-level change impact trace |
-| `route_map` | "Which URL maps to which component?" |
-| `trace_usage` | "Where is this symbol used?" — with detection evidence |
-| `find_entrypoints` | "What are the app entry points?" — routes, pages, project metadata |
-| `semantic_search` | "Find functions matching this description" — TF-IDF with code-aware tokenization |
-| `project_overview` | Entity/edge counts, store breakdown, framework API stats |
-| `cypher` | Raw Cypher query for debugging |
+| Tool               | What it answers                                                                   |
+| ------------------ | --------------------------------------------------------------------------------- |
+| `entity_context`   | "What is this file?" — full Vue-aware context, store internals, defined functions |
+| `function_context` | "Who calls this function?" — callers, callees, siblings with AST-level accuracy   |
+| `impact_analysis`  | "If I change this file, what breaks?" — bidirectional BFS traversal               |
+| `diff_impact`      | "What changed in this git diff?" — function-level change impact trace             |
+| `route_map`        | "Which URL maps to which component?"                                              |
+| `trace_usage`      | "Where is this symbol used?" — with detection evidence                            |
+| `find_entrypoints` | "What are the app entry points?" — routes, pages, project metadata                |
+| `semantic_search`  | "Find functions matching this description" — TF-IDF with code-aware tokenization  |
+| `project_overview` | Entity/edge counts, store breakdown, framework API stats                          |
+| `cypher`           | Raw Cypher query for debugging                                                    |
 
 ### MCP Resources
 
 When connected, the AI agent automatically sees:
 
-| Resource | URI | Content |
-|----------|-----|---------|
-| Project metadata | `code-sense://project` | Project name, source root, entity stats |
-| Graph schema | `code-sense://schema` | Entity types, relationships, framework APIs |
+| Resource         | URI                    | Content                                     |
+| ---------------- | ---------------------- | ------------------------------------------- |
+| Project metadata | `code-sense://project` | Project name, source root, entity stats     |
+| Graph schema     | `code-sense://schema`  | Entity types, relationships, framework APIs |
 
 ### Configuring MCP in Claude Code / Codex
 
@@ -185,13 +190,13 @@ src/
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Parsing | tree-sitter (web-tree-sitter + WASM grammars) |
-| Graph DB | LadybugDB (embedded Cypher graph database) |
-| Protocol | MCP (Model Context Protocol over stdio) |
-| Visualization | Sigma.js v3 + graphology (WebGL/Canvas) |
-| CLI | commander + zod validation |
+| Layer         | Technology                                    |
+| ------------- | --------------------------------------------- |
+| Parsing       | tree-sitter (web-tree-sitter + WASM grammars) |
+| Graph DB      | LadybugDB (embedded Cypher graph database)    |
+| Protocol      | MCP (Model Context Protocol over stdio)       |
+| Visualization | Sigma.js v3 + graphology (WebGL/Canvas)       |
+| CLI           | commander + zod validation                    |
 
 ## License
 

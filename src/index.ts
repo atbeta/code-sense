@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { resolve, sep } from 'node:path';
-import { existsSync, writeFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { existsSync, writeFileSync } from 'node:fs';
 import { loadConfig, resolveSourceRoot } from './config/loader.js';
+import { createInitConfig, probeProject } from './config/init.js';
 import { buildGraph } from './graph/builder.js';
 import { startMCPServer } from './mcp/server.js';
 import { startVisServer } from './vis/server.js';
@@ -89,67 +90,28 @@ program
 program
   .command('init')
   .description('Create a default codesense.yaml in the current directory')
-  .action(() => {
+  .option('-i, --interactive', 'Ask questions and generate a fuller Vue/Electron config')
+  .option('-f, --file <path>', 'Config file to create', 'codesense.yaml')
+  .action(async (options) => {
     const cwd = process.cwd();
-    const srcDir = resolve(cwd, 'src');
-    const projectName = cwd.split(sep).pop() ?? 'my-project';
-
-    // Probe the project: JS or TS? Which directories exist?
-    let ext = 'ts';
-    if (existsSync(srcDir)) {
-      const scanDir = (dir: string, depth: number): string[] => {
-        if (depth <= 0) return [];
-        try {
-          return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-            const full = resolve(dir, e.name);
-            if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
-              return scanDir(full, depth - 1);
-            if (e.isFile()) return [e.name];
-            return [];
-          });
-        } catch {
-          return [];
-        }
-      };
-      const files = scanDir(srcDir, 3);
-      const tsCount = files.filter((f) => f.endsWith('.ts')).length;
-      const jsCount = files.filter((f) => f.endsWith('.js')).length;
-      if (jsCount > tsCount) ext = 'js';
-    }
-
-    const storeDir = existsSync(resolve(srcDir, 'store')) ? 'store' : 'stores';
-    const storePattern = `${storeDir}/**/*.{js,ts}`;
-    const routerPattern = `router/**/*.{js,ts}`;
-
-    const defaultConfig = `# CodeSense configuration — minimal starter
-# Only project.name + entities are required. Everything else is optional.
-
-project:
-  name: "${projectName}"
-  source_root: "src"
-
-entities:
-  component:
-    patterns:
-      - "**/*.vue"
-  store:
-    patterns:
-      - "${storePattern}"
-  route:
-    patterns:
-      - "${routerPattern}"
-`;
-
-    const targetPath = resolve(cwd, 'codesense.yaml');
+    const targetPath = resolve(cwd, options.file);
     if (existsSync(targetPath)) {
-      console.error(`codesense.yaml already exists at ${targetPath}`);
+      console.error(`Config already exists at ${targetPath}`);
       process.exit(1);
     }
-    writeFileSync(targetPath, defaultConfig, 'utf-8');
-    console.log(`Created codesense.yaml at ${targetPath}`);
-    console.error(`[CodeSense] Detected file extension: .${ext}`);
-    console.error(`[CodeSense] Store pattern: ${storePattern}`);
-    console.error(`[CodeSense] Router pattern: ${routerPattern}`);
+
+    const config = await createInitConfig(cwd, Boolean(options.interactive));
+    writeFileSync(targetPath, config, 'utf-8');
+
+    const probe = probeProject(cwd);
+    console.log(`Created ${options.file} at ${targetPath}`);
+    console.error(`[CodeSense] Detected source root: ${probe.sourceRoot}`);
+    console.error(`[CodeSense] Detected file extension: .${probe.extension}`);
+    if (options.interactive) {
+      console.error(
+        '[CodeSense] Generated interactive config with framework APIs and relationships.',
+      );
+    }
   });
 
 program.parse();

@@ -72,6 +72,27 @@ export class LbugGraph {
     `);
   }
 
+  /**
+   * Create a relationship edge from an Entity node to a StoreItem node.
+   */
+  async createStoreItemRel(
+    fromPath: string,
+    storeItemPath: string,
+    relType: string,
+    relProps?: Record<string, unknown>,
+  ): Promise<void> {
+    const key = `${fromPath}||${storeItemPath}||${relType}`;
+    if (this.createdRels.has(key)) return;
+    this.createdRels.add(key);
+
+    const propsStr = relProps ? `{properties: ${escapeCypher(JSON.stringify(relProps))}}` : '';
+    await this.execute(`
+      MATCH (a:Entity {filePath: ${escapeCypher(fromPath)}})
+      MATCH (b:StoreItem {filePath: ${escapeCypher(storeItemPath)}})
+      CREATE (a)-[:${relType} ${propsStr}]->(b)
+    `);
+  }
+
   async close(): Promise<void> {
     await this.conn.close();
     await this.db.close();

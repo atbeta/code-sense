@@ -73,6 +73,13 @@ export async function createSchema(graph: LbugGraph, config: ResolvedConfig): Pr
     )
   `);
 
+  await graph.execute(`
+    CREATE REL TABLE uses_store_item (
+      FROM Entity TO StoreItem,
+      properties STRING
+    )
+  `);
+
   // Function/method-level granularity
   await graph.execute(`
     CREATE NODE TABLE Function (

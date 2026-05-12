@@ -45,6 +45,7 @@ export function extractVueEntity(ctx: EntityExtractionContext): EntityExtraction
       props.apiMode = detectApiMode(astRoot);
       extractComponentName(astRoot, props);
       detectStoreUsage(astRoot, props);
+      detectStoreItemUsage(astRoot, props);
       detectMapHelpers(astRoot, props);
       detectComposableUsage(astRoot, props);
       detectMixins(astRoot, props);
@@ -215,6 +216,133 @@ function detectStoreUsage(root: SyntaxNode, props: Record<string, unknown>): voi
   }
 }
 
+interface StoreItemUsage {
+  itemName: string;
+  itemType?: 'state' | 'getter' | 'action' | 'mutation';
+  storeAlias?: string;
+  storeName?: string;
+  line: number;
+  evidence: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+function detectStoreItemUsage(root: SyntaxNode, props: Record<string, unknown>): void {
+  const usages: StoreItemUsage[] = [];
+  const storeAliases = collectStoreAliases(root);
+
+  for (const member of collect(root, (n) => n.type === 'member_expression')) {
+    const object = member.childForFieldName('object')?.text;
+    const property = member.childForFieldName('property')?.text;
+    if (!object || !property) continue;
+
+    const storeName = storeAliases.get(object);
+    if (!storeName) continue;
+
+    usages.push({
+      itemName: property,
+      storeAlias: object,
+      storeName,
+      line: member.startPosition.row + 1,
+      evidence: member.text,
+      confidence: 'high',
+    });
+  }
+
+  for (const call of collect(root, (n) => n.type === 'call_expression')) {
+    const helper = call.childForFieldName('function')?.text ?? '';
+    if (!['mapState', 'mapGetters', 'mapActions', 'mapMutations'].includes(helper)) continue;
+
+    for (const usage of extractMapHelperStoreItems(call, helper)) {
+      usages.push(usage);
+    }
+  }
+
+  const unique = new Map<string, StoreItemUsage>();
+  for (const usage of usages) {
+    const key = `${usage.storeName ?? ''}:${usage.itemName}:${usage.line}:${usage.evidence}`;
+    if (!unique.has(key)) unique.set(key, usage);
+  }
+
+  if (unique.size > 0) {
+    props.usesStoreItems = true;
+    props.storeItemUsages = [...unique.values()];
+  }
+}
+
+function collectStoreAliases(root: SyntaxNode): Map<string, string> {
+  const aliases = new Map<string, string>();
+  for (const decl of collect(root, (n) => n.type === 'variable_declarator')) {
+    const name = decl.childForFieldName('name')?.text;
+    const value = decl.childForFieldName('value');
+    if (!name || value?.type !== 'call_expression') continue;
+
+    const callee = value.childForFieldName('function')?.text ?? '';
+    const match = callee.match(/^use(.+)Store$/);
+    if (!match) continue;
+
+    aliases.set(name, match[1]);
+  }
+  return aliases;
+}
+
+function extractMapHelperStoreItems(call: SyntaxNode, helper: string): StoreItemUsage[] {
+  const args = call.childForFieldName('arguments');
+  if (!args) return [];
+
+  const children = args.namedChildren;
+  const moduleName = children
+    .find((child) => child.type === 'string')
+    ?.text.replace(/^['"]|['"]$/g, '');
+  const itemType = mapHelperToStoreItemType(helper);
+  const usages: StoreItemUsage[] = [];
+
+  for (const child of children) {
+    if (child.type === 'array') {
+      for (const item of child.namedChildren) {
+        if (item.type !== 'string') continue;
+        const itemName = item.text.replace(/^['"]|['"]$/g, '');
+        usages.push({
+          itemName,
+          itemType,
+          storeName: moduleName,
+          line: item.startPosition.row + 1,
+          evidence: `${helper}(${args.text})`,
+          confidence: moduleName ? 'high' : 'medium',
+        });
+      }
+    }
+
+    if (child.type === 'object') {
+      for (const pair of child.namedChildren) {
+        if (pair.type !== 'pair') continue;
+        const value = pair.childForFieldName('value');
+        if (!value) continue;
+        const raw = value.text.replace(/^['"]|['"]$/g, '');
+        const itemName = raw.includes('/') ? raw.split('/').pop()! : raw;
+        const storeName = raw.includes('/') ? raw.split('/')[0] : moduleName;
+        usages.push({
+          itemName,
+          itemType,
+          storeName,
+          line: pair.startPosition.row + 1,
+          evidence: `${helper}(${args.text})`,
+          confidence: storeName ? 'high' : 'medium',
+        });
+      }
+    }
+  }
+
+  return usages;
+}
+
+function mapHelperToStoreItemType(helper: string): StoreItemUsage['itemType'] {
+  if (helper === 'mapState') return 'state';
+  if (helper === 'mapGetters') return 'getter';
+  if (helper === 'mapActions') return 'action';
+  if (helper === 'mapMutations') return 'mutation';
+  return undefined;
+}
+
 // ── Map Helpers (Vuex) ──
 
 function detectMapHelpers(root: SyntaxNode, props: Record<string, unknown>): void {
@@ -371,6 +499,8 @@ function extractStoreInternals(root: SyntaxNode): StoreInternals {
     }
   }
 
+  extractVuexModuleVariables(root, result);
+
   if (result.state.length === 0 && result.getters.length === 0) {
     const objects = collect(root, (n) => n.type === 'object');
     for (const obj of objects) {
@@ -384,6 +514,22 @@ function extractStoreInternals(root: SyntaxNode): StoreInternals {
   result.actions = [...new Set(result.actions)];
 
   return result;
+}
+
+function extractVuexModuleVariables(root: SyntaxNode, result: StoreInternals): void {
+  const targetNames = new Set(['state', 'getters', 'mutations', 'actions']);
+
+  for (const decl of collect(root, (n) => n.type === 'variable_declarator')) {
+    const name = decl.childForFieldName('name')?.text;
+    const value = decl.childForFieldName('value');
+    if (!name || !targetNames.has(name) || value?.type !== 'object') continue;
+
+    const keys = extractObjectPropertyKeys(value);
+    if (name === 'state') result.state.push(...keys);
+    if (name === 'getters') result.getters.push(...keys);
+    if (name === 'mutations') result.mutations.push(...keys);
+    if (name === 'actions') result.actions.push(...keys);
+  }
 }
 
 function extractSetupStoreReturn(

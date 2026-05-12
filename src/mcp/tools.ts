@@ -110,6 +110,23 @@ export async function entityContext(
     }
   }
 
+  // Store item usages
+  const storeItemUsages = await ctx.graph.query(
+    `MATCH (n:Entity {filePath: '${escapeStr(filePath)}'})-[r:uses_store_item]->(s:StoreItem) RETURN s.name as name, s.itemType as itemType, s.storePath as storePath, r.properties as props`,
+  );
+  if (storeItemUsages.length > 0) {
+    parts.push('');
+    parts.push('### Store Item Usage');
+    for (const row of storeItemUsages) {
+      const r = row as Record<string, unknown>;
+      const props = parseProps(r.props);
+      const storeRel = relative(process.cwd(), (r.storePath as string) || '') || '';
+      const line = props.line ? `:${props.line}` : '';
+      const evidence = props.evidence ? ` — ${props.evidence}` : '';
+      parts.push(`- \`${r.name}\` (${r.itemType}) in \`${storeRel}\`${line}${evidence}`);
+    }
+  }
+
   // Functions/methods defined in this entity
   const funcRows = await ctx.graph.query(
     `MATCH (e:Entity {filePath: '${escapeStr(filePath)}'})-[:defines]->(f:Function) RETURN f.name as name, f.kind as kind, f.startLine as startLine, f.endLine as endLine ORDER BY f.startLine`,
@@ -395,6 +412,10 @@ export async function traceUsage(
     `MATCH (s:StoreItem) WHERE s.name = '${escapeStr(name)}' RETURN s.name as name, s.itemType as itemType, s.storePath as storePath`,
   );
 
+  const storeItemUsageRows = await ctx.graph.query(
+    `MATCH (n:Entity)-[r:uses_store_item]->(s:StoreItem) WHERE s.name = '${escapeStr(name)}' RETURN n.name as entityName, n.filePath as filePath, n.entityType as entityType, s.itemType as itemType, s.storePath as storePath, r.properties as props`,
+  );
+
   // Search entities that reference this name in their properties
   const entityRows = await ctx.graph.query(
     `MATCH (n:Entity) WHERE n.properties CONTAINS '${escapeStr(name)}' RETURN n.name as name, n.filePath as filePath, n.entityType as entityType, n.properties as props`,
@@ -409,6 +430,21 @@ export async function traceUsage(
       const r = row as Record<string, unknown>;
       const storeRel = relative(process.cwd(), (r.storePath as string) || '') || '';
       parts.push(`- ${r.itemType}: \`${r.name}\` in **${storeRel}**`);
+    }
+  }
+
+  if (storeItemUsageRows.length > 0) {
+    parts.push('');
+    parts.push('### Used As Store Item');
+    for (const row of storeItemUsageRows) {
+      const r = row as Record<string, unknown>;
+      const rel = relative(process.cwd(), (r.filePath as string) || '') || '';
+      const props = parseProps(r.props);
+      const line = props.line ? `:${props.line}` : '';
+      const evidence = props.evidence ? ` — ${props.evidence}` : '';
+      parts.push(
+        `- **${r.entityName ?? rel}** (${r.entityType}) \`${rel}\`${line} uses ${r.itemType}${evidence}`,
+      );
     }
   }
 
@@ -447,7 +483,7 @@ export async function traceUsage(
     }
   }
 
-  if (storeItemRows.length === 0 && entityRows.length === 0) {
+  if (storeItemRows.length === 0 && storeItemUsageRows.length === 0 && entityRows.length === 0) {
     parts.push('\nNo usages found.');
   }
 

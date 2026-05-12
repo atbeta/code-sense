@@ -198,6 +198,17 @@ src/
 | Visualization | Sigma.js v3 + graphology (WebGL/Canvas)       |
 | CLI           | commander + zod validation                    |
 
+## Releasing (maintainers)
+
+Publishing to npm is automated via [`.github/workflows/release.yml`](.github/workflows/release.yml) when a **version tag** is pushed.
+
+1. Bump `version` in `package.json`, commit, and push to `main`.
+2. Create a tag whose name is `v` plus that exact version (e.g. `0.1.9` → tag `v0.1.9`). The workflow checks they match.
+3. In the GitHub repo, add a **Actions** secret `NPM_TOKEN` (npm publish token with access to `@code-sense`).
+4. Push the tag: `git push origin v0.1.9`
+
+The workflow runs `pnpm run check` then `pnpm publish`. Scoped package access is set in `publishConfig` (`access: "public"`).
+
 ## License
 
 MIT

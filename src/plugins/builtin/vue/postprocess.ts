@@ -4,13 +4,14 @@
  * Runs after the graph is built to create edges that can't be
  * easily detected via the declarative detector system:
  * - uses_mixin: component → mixin name matching
+ * - uses_component: component → component template tag matching
  * - ipc_channel: electron-main ↔ preload ↔ renderer IPC channel matching
  */
 import type { GraphPostProcessContext } from '../../types.js';
 import type { EntityInstance } from '../../../types/graph.js';
 
 export async function postProcessMixins(ctx: GraphPostProcessContext): Promise<void> {
-  const { graph, config, entities } = ctx;
+  const { graph, entities } = ctx;
 
   // Find all components that use mixins
   for (const entity of entities) {
@@ -20,15 +21,19 @@ export async function postProcessMixins(ctx: GraphPostProcessContext): Promise<v
     if (!mixinNames || mixinNames.length === 0) continue;
 
     for (const mixinName of mixinNames) {
-      const matchingMixin = entities.find(
-        (e: EntityInstance) => {
-          if (e.type !== 'mixin') return false;
-          const basename = e.filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
-          const normalized = mixinName.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const fileNorm = basename.toLowerCase().replace(/[^a-z0-9]/g, '');
-          return normalized === fileNorm || fileNorm.includes(normalized) || normalized.includes(fileNorm);
-        },
-      );
+      const matchingMixin = entities.find((e: EntityInstance) => {
+        if (e.type !== 'mixin') return false;
+        const basename =
+          e.filePath
+            .split('/')
+            .pop()
+            ?.replace(/\.[^.]+$/, '') ?? '';
+        const normalized = mixinName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const fileNorm = basename.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return (
+          normalized === fileNorm || fileNorm.includes(normalized) || normalized.includes(fileNorm)
+        );
+      });
 
       if (matchingMixin) {
         try {
@@ -45,7 +50,37 @@ export async function postProcessMixins(ctx: GraphPostProcessContext): Promise<v
   }
 
   // Electron IPC channel cross-referencing
+  await postProcessTemplateComponents(ctx);
   await postProcessIPC(ctx);
+}
+
+export async function postProcessTemplateComponents(ctx: GraphPostProcessContext): Promise<void> {
+  const { graph, entities } = ctx;
+  const vueEntityTypes = new Set(['component', 'page', 'layout']);
+  const candidates = entities.filter((e) => vueEntityTypes.has(e.type));
+
+  for (const entity of candidates) {
+    const usages = entity.properties.templateComponents as
+      | Array<{ tag: string; line: number }>
+      | undefined;
+    if (!usages || usages.length === 0) continue;
+
+    for (const usage of usages) {
+      const target = findComponentByTag(usage.tag, candidates, entity.filePath);
+      if (!target) continue;
+
+      try {
+        await graph.createRel(entity.filePath, target.filePath, 'uses_component', {
+          tag: usage.tag,
+          line: usage.line,
+          confidence: 'medium',
+          evidence: `<${usage.tag}> tag in template`,
+        });
+      } catch {
+        // edge table may be unavailable in hand-written configs from older graphs
+      }
+    }
+  }
 }
 
 export async function postProcessIPC(ctx: GraphPostProcessContext): Promise<void> {
@@ -55,26 +90,36 @@ export async function postProcessIPC(ctx: GraphPostProcessContext): Promise<void
   const mainHandlers = new Map<string, { entity: EntityInstance; channels: Set<string> }>();
   for (const entity of entities) {
     if (entity.type !== 'electron-main') continue;
-    const handlers = entity.properties.ipcHandlers as Array<{ channel: string; line: number; type: string }> | undefined;
+    const handlers = entity.properties.ipcHandlers as
+      | Array<{ channel: string; line: number; type: string }>
+      | undefined;
     if (!handlers || handlers.length === 0) continue;
     const channels = new Set(handlers.map((h) => h.channel));
     mainHandlers.set(entity.filePath, { entity, channels });
   }
 
   // Collect preload bridges
-  const preloadBridges: Array<{ entity: EntityInstance; namespace: string; methods: string[] }> = [];
+  const preloadBridges: Array<{ entity: EntityInstance; namespace: string; methods: string[] }> =
+    [];
   for (const entity of entities) {
     if (entity.type !== 'preload') continue;
-    const bridge = entity.properties.preloadBridge as { namespace: string; methods: string[] } | undefined;
+    const bridge = entity.properties.preloadBridge as
+      | { namespace: string; methods: string[] }
+      | undefined;
     if (!bridge) continue;
     preloadBridges.push({ entity, namespace: bridge.namespace, methods: bridge.methods });
   }
 
   // Collect renderer IPC calls
-  const rendererCalls = new Map<string, Array<{ entity: EntityInstance; channel: string; type: string }>>();
+  const rendererCalls = new Map<
+    string,
+    Array<{ entity: EntityInstance; channel: string; type: string }>
+  >();
   for (const entity of entities) {
     if (!['component', 'page', 'layout'].includes(entity.type)) continue;
-    const calls = entity.properties.ipcCalls as Array<{ channel: string; line: number; type: string }> | undefined;
+    const calls = entity.properties.ipcCalls as
+      | Array<{ channel: string; line: number; type: string }>
+      | undefined;
     if (!calls || calls.length === 0) continue;
     for (const call of calls) {
       const list = rendererCalls.get(call.channel) ?? [];
@@ -98,7 +143,9 @@ export async function postProcessIPC(ctx: GraphPostProcessContext): Promise<void
                 confidence: 'high',
                 evidence: "ipcRenderer.invoke/send('" + channel + "')",
               });
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
           break; // one channel match per handler file
         }
@@ -119,9 +166,12 @@ export async function postProcessIPC(ctx: GraphPostProcessContext): Promise<void
                 mainChannel,
                 namespace: bridge.namespace,
                 confidence: 'high',
-                evidence: "contextBridge.exposeInMainWorld('" + bridge.namespace + "', { " + method + " })",
+                evidence:
+                  "contextBridge.exposeInMainWorld('" + bridge.namespace + "', { " + method + ' })',
               });
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
         }
       }
@@ -131,4 +181,37 @@ export async function postProcessIPC(ctx: GraphPostProcessContext): Promise<void
 
 function normalizeChannel(channel: string): string {
   return channel.toLowerCase().replace(/[-_]/g, '');
+}
+
+function findComponentByTag(
+  tag: string,
+  candidates: EntityInstance[],
+  sourcePath: string,
+): EntityInstance | undefined {
+  const normalizedTag = normalizeComponentName(tag);
+  if (!normalizedTag) return undefined;
+
+  return candidates.find((candidate) => {
+    if (candidate.filePath === sourcePath) return false;
+    return componentAliases(candidate).some((alias) => alias === normalizedTag);
+  });
+}
+
+function componentAliases(entity: EntityInstance): string[] {
+  const aliases = new Set<string>();
+  const propName = entity.properties.name;
+  if (typeof propName === 'string') aliases.add(normalizeComponentName(propName));
+
+  const basename =
+    entity.filePath
+      .split('/')
+      .pop()
+      ?.replace(/\.[^.]+$/, '') ?? '';
+  aliases.add(normalizeComponentName(basename));
+
+  return [...aliases].filter(Boolean);
+}
+
+function normalizeComponentName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }

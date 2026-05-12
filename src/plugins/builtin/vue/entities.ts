@@ -35,7 +35,14 @@ export const VUE_ENTITIES: Record<string, EntityDefinition> = {
   },
 
   store: {
-    patterns: ['stores/**/*.ts', 'stores/**/*.js', 'store/**/*.ts', 'store/**/*.js', 'vuex/**/*.ts', 'vuex/**/*.js'],
+    patterns: [
+      'stores/**/*.ts',
+      'stores/**/*.js',
+      'store/**/*.ts',
+      'store/**/*.js',
+      'vuex/**/*.ts',
+      'vuex/**/*.js',
+    ],
     properties: [
       { name: 'name', extract: 'file_name' },
       { name: 'filePath', extract: 'file_path' },
@@ -95,12 +102,26 @@ export const VUE_ENTITIES: Record<string, EntityDefinition> = {
   },
 
   'electron-main': {
-    patterns: ['electron/main.ts', 'electron/main.js', 'electron/index.ts', 'electron/index.js', 'src/main/**/*.ts', 'src/main/**/*.js'],
+    patterns: [
+      'electron/main.ts',
+      'electron/main.js',
+      'electron/index.ts',
+      'electron/index.js',
+      'src/main/**/*.ts',
+      'src/main/**/*.js',
+    ],
     description: 'Electron main process entry point',
   },
 
   preload: {
-    patterns: ['electron/preload/**/*.ts', 'electron/preload/**/*.js', 'electron/preload.ts', 'electron/preload.js', 'src/preload/**/*.ts', 'src/preload/**/*.js'],
+    patterns: [
+      'electron/preload/**/*.ts',
+      'electron/preload/**/*.js',
+      'electron/preload.ts',
+      'electron/preload.js',
+      'src/preload/**/*.ts',
+      'src/preload/**/*.js',
+    ],
     properties: [
       { name: 'name', extract: 'file_name' },
       { name: 'filePath', extract: 'file_path' },
@@ -210,6 +231,13 @@ export const VUE_RELATIONSHIPS: Record<string, RelationshipDefinition> = {
     detect_by: [{ type: 'import_statement', pattern: '\\.vue$' }],
   },
 
+  uses_component: {
+    description: 'Vue template renders another Vue component',
+    from: 'component',
+    to: 'component',
+    detect_by: [],
+  },
+
   defines_composable: {
     description: 'Composable module exports composable functions',
     from: 'composable',
@@ -224,7 +252,8 @@ export const VUE_RELATIONSHIPS: Record<string, RelationshipDefinition> = {
   },
 
   uses_mixin: {
-    description: 'Component uses a mixin via mixins: [...] declaration (resolved in post-processing)',
+    description:
+      'Component uses a mixin via mixins: [...] declaration (resolved in post-processing)',
     from: 'component',
     to: 'mixin',
     detect_by: [],
@@ -244,9 +273,7 @@ export const VUE_RELATIONSHIPS: Record<string, RelationshipDefinition> = {
     description: 'Preload script exposes IPC methods to renderer',
     from: 'preload',
     to: 'preload',
-    detect_by: [
-      { type: 'call_expression', pattern: 'contextBridge.exposeInMainWorld' },
-    ],
+    detect_by: [{ type: 'call_expression', pattern: 'contextBridge.exposeInMainWorld' }],
   },
 
   calls_ipc: {

@@ -16,6 +16,9 @@
     "type": "git",
     "url": "git+https://github.com/opencode-cc/code-sense.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "vue",
     "code-graph",

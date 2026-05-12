@@ -1246,6 +1246,7 @@ export async function semanticSearch(
 // ===== Helpers =====
 
 function escapeStr(value: string): string {
+  // TODO: centralize Cypher parameterization/escaping across graph and MCP query paths.
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 

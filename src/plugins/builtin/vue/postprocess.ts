@@ -7,6 +7,9 @@
  * - uses_component: component → component template tag matching
  * - uses_store_item: component → StoreItem member/map-helper matching
  * - ipc_channel: electron-main ↔ preload ↔ renderer IPC channel matching
+ *
+ * `postProcessMixins` is the historical plugin hook name, but it now
+ * orchestrates all Vue plugin post-processing steps.
  */
 import type { GraphPostProcessContext } from '../../types.js';
 import type { EntityInstance } from '../../../types/graph.js';
@@ -52,7 +55,7 @@ export async function postProcessMixins(ctx: GraphPostProcessContext): Promise<v
     }
   }
 
-  // Electron IPC channel cross-referencing
+  // Run the remaining Vue post-processing passes.
   await postProcessStoreItemUsage(ctx);
   await postProcessTemplateComponents(ctx);
   await postProcessIPC(ctx);

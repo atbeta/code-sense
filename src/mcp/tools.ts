@@ -23,7 +23,11 @@ export async function entityContext(
 
   // Fallback: search by filename or entity name if exact path doesn't match
   if (rows.length === 0) {
-    const searchName = params.filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '';
+    const searchName =
+      params.filePath
+        .split('/')
+        .pop()
+        ?.replace(/\.[^.]+$/, '') ?? '';
     if (searchName) {
       const altRows = await ctx.graph.query(
         `MATCH (n:Entity {name: '${escapeStr(searchName)}'}) RETURN n`,
@@ -319,7 +323,9 @@ export async function routeMap(
   }
 
   const parts: string[] = ['## Route Map' + (pattern ? ` (matching "${pattern}")` : '')];
-  parts.push(`Total mappings: ${rows.length}${rows.length > limit ? ` (showing first ${limit})` : ''}`);
+  parts.push(
+    `Total mappings: ${rows.length}${rows.length > limit ? ` (showing first ${limit})` : ''}`,
+  );
   parts.push('');
 
   // Group by route file
@@ -352,7 +358,12 @@ export async function routeMap(
         const matched = (routeProps.routes as Array<Record<string, unknown>>).find(
           (route: Record<string, unknown>) => {
             const comp = String(route.component ?? '');
-            const compName = comp.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
+            const compName =
+              comp
+                .split('/')
+                .pop()
+                ?.replace(/\.[^.]+$/, '')
+                ?.toLowerCase() ?? '';
             const edgeName = (r.componentName as string)?.toLowerCase() ?? '';
             return compName === edgeName;
           },

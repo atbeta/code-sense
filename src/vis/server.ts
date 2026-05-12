@@ -21,7 +21,12 @@ function resolveModuleFile(modulePath: string): string {
     path.resolve(process.cwd(), 'node_modules', modulePath),
   ];
   for (const p of candidates) {
-    try { statSync(p); return p; } catch { /* not found */ }
+    try {
+      statSync(p);
+      return p;
+    } catch {
+      /* not found */
+    }
   }
   return candidates[0];
 }

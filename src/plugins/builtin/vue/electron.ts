@@ -46,13 +46,16 @@ export function extractMainIPC(root: SyntaxNode): IPCHandler[] {
     const args = call.childForFieldName('arguments');
     if (!args) continue;
 
-    const argList = args.namedChildren.filter((c) => c.type !== ',' && c.type !== '(' && c.type !== ')');
+    const argList = args.namedChildren.filter(
+      (c) => c.type !== ',' && c.type !== '(' && c.type !== ')',
+    );
     const channel = argList[0]?.text?.replace(/^['"]|['"]$/g, '') ?? '';
-    const handlerName = argList[1]?.type === 'identifier'
-      ? argList[1].text
-      : argList[1]?.type === 'arrow_function'
-        ? '(inline)'
-        : '';
+    const handlerName =
+      argList[1]?.type === 'identifier'
+        ? argList[1].text
+        : argList[1]?.type === 'arrow_function'
+          ? '(inline)'
+          : '';
 
     if (channel) {
       handlers.push({
@@ -96,7 +99,12 @@ export function extractRendererIPC(root: SyntaxNode): IPCCall[] {
     if (callee.startsWith('window.api.') || callee.startsWith('window.electronAPI.')) {
       const parts = callee.split('.');
       if (parts.length === 3) {
-        calls.push({ channel: parts[2], callee, line: call.startPosition.row + 1, type: 'preloadBridge' });
+        calls.push({
+          channel: parts[2],
+          callee,
+          line: call.startPosition.row + 1,
+          type: 'preloadBridge',
+        });
       }
     }
   }
@@ -111,12 +119,15 @@ export function extractPreloadBridge(root: SyntaxNode): PreloadBridge | null {
   for (const call of calls) {
     const callee = getFullCallee(call);
     if (!callee) continue;
-    if (callee !== 'contextBridge.exposeInMainWorld' && !callee.endsWith('.exposeInMainWorld')) continue;
+    if (callee !== 'contextBridge.exposeInMainWorld' && !callee.endsWith('.exposeInMainWorld'))
+      continue;
 
     const args = call.childForFieldName('arguments');
     if (!args) continue;
 
-    const argList = args.namedChildren.filter((c) => c.type !== ',' && c.type !== '(' && c.type !== ')');
+    const argList = args.namedChildren.filter(
+      (c) => c.type !== ',' && c.type !== '(' && c.type !== ')',
+    );
     // First arg: 'api' or 'electronAPI' — the namespace string
     const namespace = argList[0]?.text?.replace(/^['"]|['"]$/g, '') ?? '';
     // Second arg: the object with methods

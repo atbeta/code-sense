@@ -61,10 +61,12 @@ export async function startMCPServer(
       description: 'Graph schema — entity types, relationship types, and their descriptions.',
     },
     async () => {
-      const entities = Object.entries(ctx.config.all_entities)
-        .map(([name, def]) => `- **${name}**: ${def.description ?? '—'}`);
-      const rels = Object.entries(ctx.config.relationships ?? {})
-        .map(([name, def]) => `- **${name}** (${def.from} → ${def.to}): ${def.description ?? '—'}`);
+      const entities = Object.entries(ctx.config.all_entities).map(
+        ([name, def]) => `- **${name}**: ${def.description ?? '—'}`,
+      );
+      const rels = Object.entries(ctx.config.relationships ?? {}).map(
+        ([name, def]) => `- **${name}** (${def.from} → ${def.to}): ${def.description ?? '—'}`,
+      );
       const text = [
         `# CodeSense Graph Schema`,
         `Project: ${ctx.config.project.name}`,
@@ -78,7 +80,8 @@ export async function startMCPServer(
         '',
         `## Framework APIs`,
         ...(ctx.config.framework_apis ?? []).map(
-          (fw) => `- **${fw.name}**: ${fw.api_list.length} APIs (sources: ${fw.sources.join(', ')})`,
+          (fw) =>
+            `- **${fw.name}**: ${fw.api_list.length} APIs (sources: ${fw.sources.join(', ')})`,
         ),
       ].join('\n');
       return { contents: [{ text, uri: 'code-sense://schema' }] };

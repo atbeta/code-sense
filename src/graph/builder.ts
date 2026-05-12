@@ -60,7 +60,10 @@ export async function buildGraph(
   // Merge plugin contributions into config
   // For entities: combine patterns from both config and plugin, not replace
   const mergedEntities: Record<string, EntityDefinition> = {};
-  for (const key of new Set([...Object.keys(config.all_entities), ...Object.keys(pluginContrib.entities)])) {
+  for (const key of new Set([
+    ...Object.keys(config.all_entities),
+    ...Object.keys(pluginContrib.entities),
+  ])) {
     const cfg = config.all_entities[key];
     const plg = pluginContrib.entities[key];
     if (cfg && plg) {
@@ -254,7 +257,7 @@ export async function buildGraph(
 
   // Build AST-based CALLS edges between functions
   if (functions.length > 0) {
-    await buildASTCallGraph(graph, functions, entities, sourceRoot);
+    await buildASTCallGraph(graph, functions);
   }
 
   // Plugin post-processing hook
@@ -414,12 +417,7 @@ async function processFile(
 
 // ===== AST-based Call Graph =====
 
-async function buildASTCallGraph(
-  graph: LbugGraph,
-  functions: FunctionDef[],
-  entities: EntityInstance[],
-  sourceRoot: string,
-): Promise<void> {
+async function buildASTCallGraph(graph: LbugGraph, functions: FunctionDef[]): Promise<void> {
   // Index functions by name (same-file matches preferred)
   const funcByName = new Map<string, FunctionDef[]>();
   for (const fn of functions) {
@@ -427,10 +425,6 @@ async function buildASTCallGraph(
     list.push(fn);
     funcByName.set(fn.name, list);
   }
-
-  // Index functions by id
-  const funcById = new Map<string, FunctionDef>();
-  for (const fn of functions) funcById.set(fn.id, fn);
 
   // Group functions by file for batch AST parsing
   const funcsByFile = new Map<string, FunctionDef[]>();
@@ -459,13 +453,15 @@ async function buildASTCallGraph(
     }
 
     // Find all function-like AST nodes
-    const astFuncs = collect(root, (n) =>
-      n.type === 'function_declaration' ||
-      n.type === 'arrow_function' ||
-      n.type === 'method_definition' ||
-      (n.type === 'variable_declarator' &&
-        (n.childForFieldName('value')?.type === 'arrow_function' ||
-         n.childForFieldName('value')?.type === 'function')),
+    const astFuncs = collect(
+      root,
+      (n) =>
+        n.type === 'function_declaration' ||
+        n.type === 'arrow_function' ||
+        n.type === 'method_definition' ||
+        (n.type === 'variable_declarator' &&
+          (n.childForFieldName('value')?.type === 'arrow_function' ||
+            n.childForFieldName('value')?.type === 'function')),
     );
 
     // For each function in this file, find its AST node by NAME match
@@ -545,75 +541,49 @@ function extractCalleeName(node: SyntaxNode): string | null {
 
 function isBuiltin(name: string): boolean {
   return [
-    'if', 'switch', 'for', 'while', 'return', 'throw', 'typeof', 'instanceof',
-    'new', 'import', 'export', 'require', 'console', 'JSON', 'Math',
-    'Object', 'Array', 'String', 'Number', 'Boolean', 'Promise', 'Map', 'Set',
-    'Ref', 'ComputedRef', 'parseInt', 'parseFloat', 'isNaN',
-    'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
-    'alert', 'confirm', 'prompt', 'fetch',
-    'parseInt', 'parseFloat', 'isNaN', 'isFinite',
-    'encodeURIComponent', 'decodeURIComponent',
+    'if',
+    'switch',
+    'for',
+    'while',
+    'return',
+    'throw',
+    'typeof',
+    'instanceof',
+    'new',
+    'import',
+    'export',
+    'require',
+    'console',
+    'JSON',
+    'Math',
+    'Object',
+    'Array',
+    'String',
+    'Number',
+    'Boolean',
+    'Promise',
+    'Map',
+    'Set',
+    'Ref',
+    'ComputedRef',
+    'parseInt',
+    'parseFloat',
+    'isNaN',
+    'setTimeout',
+    'setInterval',
+    'clearTimeout',
+    'clearInterval',
+    'alert',
+    'confirm',
+    'prompt',
+    'fetch',
+    'parseInt',
+    'parseFloat',
+    'isNaN',
+    'isFinite',
+    'encodeURIComponent',
+    'decodeURIComponent',
   ].includes(name);
-}
-
-function findFunctionNode(
-  root: SyntaxNode,
-  startLine: number,
-  endLine: number,
-): SyntaxNode | null {
-  // Search for function declaration or arrow function matching the line range
-  const candidates = collect(
-    root,
-    (n) =>
-      n.type === 'function_declaration' ||
-      n.type === 'arrow_function' ||
-      n.type === 'method_definition' ||
-      (n.type === 'variable_declarator' &&
-        (n.childForFieldName('value')?.type === 'arrow_function' ||
-         n.childForFieldName('value')?.type === 'function')),
-  );
-
-  for (const node of candidates) {
-    const nodeStart = node.startPosition.row + 1;
-    const nodeEnd = node.endPosition.row + 1;
-    // Allow ±1 line tolerance for comment/annotation lines
-    if (Math.abs(nodeStart - startLine) <= 1 && Math.abs(nodeEnd - endLine) <= 1) {
-      return node;
-    }
-  }
-
-  // Fallback: search for any function-like node within the line range
-  for (const node of candidates) {
-    const nodeStart = node.startPosition.row + 1;
-    if (nodeStart >= startLine && nodeStart <= endLine) return node;
-  }
-
-  return null;
-}
-
-function buildImportMap(
-  entities: EntityInstance[],
-  sourceRoot: string,
-): Map<string, { name: string; resolvedFile: string }[]> {
-  const result = new Map<string, { name: string; resolvedFile: string }[]>();
-
-  for (const entity of entities) {
-    const imports = entity.properties._imports as ImportInfo[] | undefined;
-    if (!imports || imports.length === 0) continue;
-
-    const resolved: { name: string; resolvedFile: string }[] = [];
-    for (const imp of imports) {
-      const resolvedPath = resolveImportPath(entity.filePath, imp.source, sourceRoot);
-      if (resolvedPath) {
-        for (const name of imp.imports) {
-          resolved.push({ name, resolvedFile: resolvedPath });
-        }
-      }
-    }
-    if (resolved.length > 0) result.set(entity.filePath, resolved);
-  }
-
-  return result;
 }
 
 function extractGenericFunctions(
@@ -1021,13 +991,26 @@ function matchMatchesEntity(
     if (importPath && importPath.length > 2) {
       const normalizedImport = importPath.replace(/\\/g, '/');
       const normalizedEntity = entityPath.replace(/\\/g, '/');
-      const importName = normalizedImport.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
-      const entityName = normalizedEntity.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
+      const importName =
+        normalizedImport
+          .split('/')
+          .pop()
+          ?.replace(/\.[^.]+$/, '')
+          ?.toLowerCase() ?? '';
+      const entityName =
+        normalizedEntity
+          .split('/')
+          .pop()
+          ?.replace(/\.[^.]+$/, '')
+          ?.toLowerCase() ?? '';
       if (importName.length > 1 && entityName.length > 1 && importName === entityName) {
         return true;
       }
       // Fuzzy: import path segment appears in entity path
-      if (importName.length > 2 && normalizedEntity.toLowerCase().includes('/' + importName + '/')) {
+      if (
+        importName.length > 2 &&
+        normalizedEntity.toLowerCase().includes('/' + importName + '/')
+      ) {
         return true;
       }
     }
@@ -1038,8 +1021,18 @@ function matchMatchesEntity(
     const source = String(match.source ?? match.importPath ?? '').replace(/['"]/g, '');
     if (source && source.length > 2) {
       const normalized = source.replace(/\\/g, '/');
-      const sourceName = normalized.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
-      const entityName = entityPath.split('/').pop()?.replace(/\.[^.]+$/, '')?.toLowerCase() ?? '';
+      const sourceName =
+        normalized
+          .split('/')
+          .pop()
+          ?.replace(/\.[^.]+$/, '')
+          ?.toLowerCase() ?? '';
+      const entityName =
+        entityPath
+          .split('/')
+          .pop()
+          ?.replace(/\.[^.]+$/, '')
+          ?.toLowerCase() ?? '';
       if (sourceName.length > 1 && sourceName === entityName) return true;
     }
   }

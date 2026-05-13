@@ -96,6 +96,7 @@ const HTML_PAGE = `<!DOCTYPE html>
     font-family:'Inter',sans-serif; font-weight:500; transition:all 0.2s; white-space:nowrap; display:flex; align-items:center; gap:4px;
     height:28px; letter-spacing:0.01em;
   }
+  #topbar .btn .ico { width:13px; height:13px; stroke:currentColor; stroke-width:1.8; fill:none; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; opacity:0.92; }
   #topbar .btn:hover { color:var(--text); border-color:var(--border-light); background:var(--surface-raised); }
   #topbar .btn.active { color:var(--blue); border-color:var(--blue); background:rgba(121,192,255,0.06); }
   #topbar .stats { color:var(--text-secondary); font-size:11px; font-weight:500; margin-left:auto; opacity:0.8; }
@@ -116,7 +117,7 @@ const HTML_PAGE = `<!DOCTYPE html>
   .legend-row .legend-count { color:var(--muted); font-size:10px; font-weight:600; }
   .legend-filter { border-radius:6px; padding:2px 4px; margin-left:-4px; margin-right:-4px; transition:background 0.15s, opacity 0.15s; }
   .legend-filter:hover { background:rgba(88,166,255,0.08); }
-  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; box-shadow:0 0 6px currentColor; }
+  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; box-shadow:0 0 10px currentColor; border:1px solid rgba(255,255,255,0.18); }
   .legend-line { width:20px; height:2px; flex-shrink:0; border-radius:2px; }
 
   /* Side Panel */
@@ -159,9 +160,30 @@ const HTML_PAGE = `<!DOCTYPE html>
   }
   #panel-body .section-title .count { font-weight:400; color:var(--muted); }
   #panel-body .props { font-size:12px; }
-  #panel-body .props .row { display:grid; grid-template-columns:110px 1fr; gap:12px; padding:6px 0; border-bottom:1px solid rgba(42,48,64,0.4); }
+  #panel-body .props .row { display:grid; grid-template-columns:110px 1fr; gap:12px; padding:7px 0; border-bottom:1px solid rgba(42,48,64,0.4); }
+  #panel-body .props .row.complex { display:block; padding:10px 0; }
   #panel-body .props .row .k { color:var(--text-secondary); }
+  #panel-body .props .row.complex .k { display:block; margin-bottom:7px; }
   #panel-body .props .row .v { color:var(--green); font-family:'JetBrains Mono',monospace; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:normal; word-break:break-word; text-align:right; }
+  #panel-body .props .row.complex .v { display:block; max-width:none; text-align:left; color:var(--text-secondary); }
+  #panel-body .value-list { display:flex; flex-direction:column; gap:6px; }
+  #panel-body .value-card {
+    border:1px solid rgba(42,48,64,0.75); border-radius:8px; padding:7px 9px;
+    background:rgba(10,12,16,0.28);
+  }
+  #panel-body .value-card .card-title { color:var(--text); font:500 11px/1.35 'JetBrains Mono',monospace; word-break:break-word; }
+  #panel-body .value-card .card-subtitle { color:var(--muted); font:10px/1.35 'JetBrains Mono',monospace; margin-top:2px; word-break:break-word; }
+  #panel-body .value-fields { display:grid; grid-template-columns:86px 1fr; gap:3px 8px; margin-top:6px; }
+  #panel-body .value-fields .field-k { color:var(--muted); font-size:10px; }
+  #panel-body .value-fields .field-v { color:var(--green); font:10px/1.35 'JetBrains Mono',monospace; word-break:break-word; }
+  #panel-body .chip-row { display:flex; flex-wrap:wrap; gap:5px; justify-content:flex-end; }
+  #panel-body .row.complex .chip-row { justify-content:flex-start; }
+  #panel-body .chip {
+    display:inline-flex; align-items:center; max-width:100%; padding:2px 7px; border-radius:999px;
+    background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.14);
+    color:var(--text-secondary); font:10px/1.45 'JetBrains Mono',monospace;
+  }
+  #panel-body .more-note { color:var(--muted); font-size:10px; padding:2px 1px; }
   #panel-body .edge-item {
     display:flex; align-items:center; gap:6px; padding:5px 0; font-size:12px; border-bottom:1px solid rgba(42,48,64,0.2);
     cursor:pointer; transition:background 0.15s; border-radius:4px; padding-left:2px;
@@ -243,9 +265,9 @@ const HTML_PAGE = `<!DOCTYPE html>
     <span class="match-count" id="match-count"></span>
   </div>
   <span class="sep"></span>
-  <button class="btn" id="btn-reset" title="Reset view">&#x1F504; <span class="lbl">Reset</span></button>
-  <button class="btn active" id="btn-edges" title="Toggle edge types">&#x1F517; <span class="lbl">Edges</span></button>
-  <button class="btn" id="btn-layout" title="Re-run layout">&#x25F3; <span class="lbl">Layout</span></button>
+  <button class="btn" id="btn-reset" title="Reset view"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7v6h6"></path><path d="M20 17a8 8 0 0 1-13.7-5.6L4 13"></path><path d="M4 7a8 8 0 0 1 13.7 5.6"></path></svg><span class="lbl">Reset</span></button>
+  <button class="btn active" id="btn-edges" title="Toggle edge types"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7h-.5a4.5 4.5 0 0 0 0 9H11"></path><path d="M13 7h2.5a4.5 4.5 0 0 1 0 9H15"></path><path d="M8 12h8"></path></svg><span class="lbl">Edges</span></button>
+  <button class="btn" id="btn-layout" title="Re-run layout"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"></circle><circle cx="5" cy="7" r="1.8"></circle><circle cx="19" cy="8" r="1.8"></circle><circle cx="18" cy="18" r="1.8"></circle><path d="M6.7 8.2 10 11"></path><path d="m14.1 10.8 3.2-2"></path><path d="m13.8 13.7 2.9 3"></path></svg><span class="lbl">Layout</span></button>
   <span class="stats" id="stats"></span>
 </div>
 <div id="edge-dropdown"></div>
@@ -309,37 +331,38 @@ var EDGE_COLORS = {
 };
 
 var EDGE_WIDTH = {
-  imports: 0.25,
-  USES_API: 0.35,
-  uses_store: 0.5,
-  uses_store_item: 0.55,
-  uses_component: 0.45,
-  uses_composable: 0.4,
-  matches_route: 0.5,
-  route_to_component: 0.55,
-  ipc_channel: 0.5,
-  exposes_ipc: 0.5,
-  calls_ipc: 0.55,
-  has_state: 0.3,
-  has_getter: 0.3,
-  has_action: 0.3,
-  has_mutation: 0.3,
-  belongs_to: 0.2,
+  imports: 0.16,
+  USES_API: 0.24,
+  uses_store: 0.32,
+  uses_store_item: 0.36,
+  uses_component: 0.28,
+  uses_composable: 0.26,
+  matches_route: 0.34,
+  route_to_component: 0.36,
+  ipc_channel: 0.34,
+  exposes_ipc: 0.34,
+  calls_ipc: 0.36,
+  has_state: 0.22,
+  has_getter: 0.22,
+  has_action: 0.22,
+  has_mutation: 0.22,
+  belongs_to: 0.16,
 };
 
 var NODE_SIZES = {
-  component: 5,
-  store: 4.5,
-  route: 4,
-  composable: 3.5,
-  legacy_module: 5,
-  'electron-main': 4.8,
-  preload: 4.4,
-  chart_component: 5,
+  component: 4.8,
+  store: 4.6,
+  route: 4.4,
+  composable: 3.8,
+  legacy_module: 5.2,
+  'electron-main': 4.9,
+  preload: 4.5,
+  chart_component: 5.1,
 };
 
 var INCOMING_COLOR = '#f0883e';  // warm orange for incoming
 var OUTGOING_COLOR = '#58a6ff';  // bright blue for outgoing
+var DEFAULT_EDGE_ALPHA = 0.24;
 
 // ===== GLOBAL STATE =====
 var allData = null;
@@ -365,7 +388,8 @@ function escapeHtml(value) {
 
 function typeColor(t) { return TYPE_COLORS[t] || '#6e7681'; }
 function edgeColor(t) { return EDGE_COLORS[t] || '#8b949e'; }
-function edgeWidth(t) { return EDGE_WIDTH[t] || 0.5; }
+function graphEdgeColor(t) { return rgba(edgeColor(t), DEFAULT_EDGE_ALPHA); }
+function edgeWidth(t) { return EDGE_WIDTH[t] || 0.22; }
 function nodeSize(t) { return NODE_SIZES[t] || 4; }
 function shortPath(p) {
   var pathValue = String(p || '');
@@ -376,6 +400,14 @@ function shortPath(p) {
 function rgba(hex, alpha) {
   var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
   return 'rgba('+r+','+g+','+b+','+alpha+')';
+}
+
+function lighten(hex, amount) {
+  var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  r = Math.min(255, Math.round(r + (255 - r) * amount));
+  g = Math.min(255, Math.round(g + (255 - g) * amount));
+  b = Math.min(255, Math.round(b + (255 - b) * amount));
+  return '#'+[r,g,b].map(function(v) { return v.toString(16).padStart(2, '0'); }).join('');
 }
 
 // ===== EDGE CURVE RENDERING =====
@@ -615,9 +647,10 @@ function buildGraph(data) {
     var n = data.nodes[i];
     var angle = (2 * Math.PI * i) / nodeCount;
     var baseSize = nodeSize(n.entityType);
-    // Scale size by degree: min connection = base, max connection = base * 2.5
+    // Scale size by degree: min connection = base, max connection = base * 2.2
     var deg = degree[n.key] || 0;
-    var degScale = 1 + ((deg - minDeg) / (maxDeg - minDeg)) * 1.5;
+    var degScale = 1 + ((deg - minDeg) / (maxDeg - minDeg)) * 1.2;
+    var nodeColor = typeColor(n.entityType);
     g.addNode(n.key, {
       label: n.label,
       entityType: n.entityType,
@@ -627,8 +660,10 @@ function buildGraph(data) {
       _properties: n.properties,
       _degree: deg,
       _baseSize: baseSize,
-      size: Math.round(baseSize * degScale),
-      color: typeColor(n.entityType),
+      size: Math.max(2.8, baseSize * degScale),
+      color: lighten(nodeColor, 0.08),
+      borderColor: rgba('#ffffff', 0.38),
+      highlightedColor: lighten(nodeColor, 0.2),
       x: circleR * Math.cos(angle) + (Math.random()-0.5)*40,
       y: circleR * Math.sin(angle) + (Math.random()-0.5)*40,
       zIndex: 0,
@@ -643,7 +678,7 @@ function buildGraph(data) {
         e.source, e.target, {
         label: eType,
         size: edgeWidth(eType),
-        color: edgeColor(eType),
+        color: graphEdgeColor(eType),
         type: 'arrow',
         zIndex: -1,
         hidden: false,
@@ -775,6 +810,74 @@ function formatValue(v, limit) {
   return text;
 }
 
+function isComplexValue(v) {
+  return Array.isArray(v) || (v && typeof v === 'object');
+}
+
+function renderPropertyValue(key, value) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '<span class="chip">empty</span>';
+    var hasObjects = value.some(function(item) { return item && typeof item === 'object'; });
+    if (!hasObjects) {
+      return '<div class="chip-row">' + value.map(function(item) {
+        return '<span class="chip">'+escapeHtml(formatValue(item, 48))+'</span>';
+      }).join('') + '</div>';
+    }
+
+    var maxItems = key === 'routes' ? 10 : 6;
+    var cards = value.slice(0, maxItems).map(function(item) {
+      return renderObjectCard(key, item);
+    }).join('');
+    if (value.length > maxItems) {
+      cards += '<div class="more-note">+'+(value.length - maxItems)+' more</div>';
+    }
+    return '<div class="value-list">'+cards+'</div>';
+  }
+
+  if (value && typeof value === 'object') {
+    return '<div class="value-list">'+renderObjectCard(key, value)+'</div>';
+  }
+
+  return escapeHtml(formatValue(value, 220));
+}
+
+function renderObjectCard(key, value) {
+  var obj = value && typeof value === 'object' ? value : {};
+  var title = obj.fullPath || obj.path || obj.itemName || obj.tag || obj.helper || obj.name || obj.component || formatValue(obj, 80);
+  var subtitle = '';
+  if (key === 'routes') {
+    var routeBits = [];
+    if (obj.name) routeBits.push('name: ' + obj.name);
+    if (obj.componentPath || obj.component) routeBits.push(obj.componentPath || obj.component);
+    if (obj.redirect) routeBits.push('redirect: ' + obj.redirect);
+    subtitle = routeBits.join(' · ');
+  } else if (key === 'storeItemUsages') {
+    subtitle = [obj.itemType, obj.storeName || obj.storeAlias, obj.evidence].filter(Boolean).join(' · ');
+  } else if (key === 'mapHelperCalls') {
+    subtitle = obj.args || '';
+  } else if (key === 'templateComponents') {
+    subtitle = obj.line ? 'line ' + obj.line : '';
+  }
+
+  var omit = { fullPath:true, path:true, itemName:true, tag:true, helper:true, name:true, component:true, componentPath:true, args:true, evidence:true };
+  var fields = Object.keys(obj).filter(function(field) {
+    return obj[field] !== undefined && obj[field] !== null && !omit[field];
+  }).slice(0, 6);
+  var html = '<div class="value-card">';
+  html += '<div class="card-title">'+escapeHtml(formatValue(title, 140))+'</div>';
+  if (subtitle) html += '<div class="card-subtitle">'+escapeHtml(formatValue(subtitle, 180))+'</div>';
+  if (fields.length > 0) {
+    html += '<div class="value-fields">';
+    for (var i = 0; i < fields.length; i++) {
+      var field = fields[i];
+      html += '<span class="field-k">'+escapeHtml(field)+'</span><span class="field-v">'+escapeHtml(formatValue(obj[field], 120))+'</span>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 function edgeMeta(edge) {
   var p = edge.props || {};
   var bits = [];
@@ -817,14 +920,14 @@ function showPanel(nodeKey) {
   html += '</div>';
 
   // Properties
-  var propKeys = Object.keys(props).filter(function(k) { return !k.startsWith('_'); });
+  var propKeys = Object.keys(props).filter(function(k) { return !k.startsWith('_') && k !== 'routeTree'; });
   if (propKeys.length > 0) {
     html += '<div class="section"><div class="section-title">Properties</div><div class="props">';
     for (var pi = 0; pi < propKeys.length; pi++) {
       var pk = propKeys[pi];
       var pv = props[pk];
-      var displayV = Array.isArray(pv) ? pv.map(function(item) { return formatValue(item, 60); }).join(', ') : formatValue(pv, 180);
-      html += '<div class="row"><span class="k">'+escapeHtml(pk)+'</span><span class="v" title="'+escapeHtml(formatValue(pv, 800))+'">'+escapeHtml(displayV)+'</span></div>';
+      var complex = isComplexValue(pv);
+      html += '<div class="row '+(complex ? 'complex' : '')+'"><span class="k">'+escapeHtml(pk)+'</span><span class="v" title="'+escapeHtml(formatValue(pv, 800))+'">'+renderPropertyValue(pk, pv)+'</span></div>';
     }
     html += '</div></div>';
   }
@@ -1051,12 +1154,12 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
     defaultEdgeType: 'arrow',
     labelDensity: 0.07,
     labelGridCellSize: 70,
-    labelRenderedSizeThreshold: 4,
+    labelRenderedSizeThreshold: 6,
     labelFont: 'JetBrains Mono,monospace',
     labelColor: { attribute: 'labelColor' },
     labelSize: 12,
-    defaultNodeColor: '#484f58',
-    defaultEdgeColor: '#2a3040',
+    defaultNodeColor: '#6e7681',
+    defaultEdgeColor: 'rgba(110,118,129,0.18)',
     stagePadding: 50,
     enableEdgeEvents: true,
     hideEdgesOnMove: true,
@@ -1073,13 +1176,13 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
       var hasSel = selectedNode || highlightedNodes.size > 0;
       if (!hasSel) return data;
       if (isSel) {
-        return { ...data, size: (data._baseSize || 6) * 4.5, zIndex: 100 };
+        return { ...data, size: (data._baseSize || 6) * 4.2, color: data.highlightedColor || data.color, zIndex: 100 };
       }
       if (isNeighbor) {
-        return { ...data, size: (data._baseSize || 6) * 2.0, zIndex: 50 };
+        return { ...data, size: (data._baseSize || 6) * 2.0, color: data.highlightedColor || data.color, zIndex: 50 };
       }
       if (isHL) {
-        return { ...data, size: (data._baseSize || 6) * 2.5, zIndex: 75 };
+        return { ...data, size: (data._baseSize || 6) * 2.7, color: data.highlightedColor || data.color, zIndex: 75 };
       }
       return { ...data, hidden: true };
     },
@@ -1092,13 +1195,13 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
       var isIn = selectedNode && tgt === selectedNode;
       var hlConn = !selectedNode && (highlightedNodes.has(src) || highlightedNodes.has(tgt));
       if (isOut) {
-        return { ...data, hidden: false, size: (edgeWidth(data._relType) || 0.5) * 2.5, color: OUTGOING_COLOR, zIndex: 25 };
+        return { ...data, hidden: false, size: Math.max(0.75, (edgeWidth(data._relType) || 0.22) * 2.6), color: rgba(OUTGOING_COLOR, 0.9), zIndex: 25 };
       }
       if (isIn) {
-        return { ...data, hidden: false, size: (edgeWidth(data._relType) || 0.5) * 2.5, color: INCOMING_COLOR, zIndex: 25 };
+        return { ...data, hidden: false, size: Math.max(0.75, (edgeWidth(data._relType) || 0.22) * 2.6), color: rgba(INCOMING_COLOR, 0.9), zIndex: 25 };
       }
       if (hlConn) {
-        return { ...data, hidden: false, size: (edgeWidth(data._relType) || 0.5) * 2, zIndex: 20 };
+        return { ...data, hidden: false, size: Math.max(0.58, (edgeWidth(data._relType) || 0.22) * 2), color: rgba(edgeColor(data._relType), 0.76), zIndex: 20 };
       }
       return { ...data, hidden: true };
     },

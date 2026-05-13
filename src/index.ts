@@ -16,7 +16,7 @@ const program = new Command();
 program
   .name('code-sense')
   .description('Config-driven code knowledge graph for Vue projects')
-  .version('0.2.1');
+  .version('0.2.2');
 
 program
   .command('index')

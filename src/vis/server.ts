@@ -130,29 +130,33 @@ const HTML_PAGE = `<!DOCTYPE html>
   #panel.active { display:block; }
   #panel-header {
     display:flex; align-items:flex-start; justify-content:space-between;
-    padding:16px 18px 12px; border-bottom:1px solid var(--border);
+    padding:14px 18px 12px; border-bottom:1px solid var(--border);
     position:sticky; top:0; background:rgba(26,30,38,0.98); z-index:1;
     backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
   }
   #panel-header .type-badge {
-    display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; margin-bottom:6px;
+    display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; margin-bottom:7px;
     font-family:'Inter',sans-serif;
   }
   #panel-header h3 { font-size:16px; margin:0; word-break:break-all; font-weight:600; color:var(--text); }
+  #panel-header .header-path {
+    color:var(--muted); font:11px/1.45 'JetBrains Mono',monospace; margin-top:8px;
+    max-width:310px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
   #panel-header .close-btn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:20px; padding:0 0 0 8px; line-height:1; transition:color 0.15s; }
   #panel-header .close-btn:hover { color:var(--text); }
-  #panel-body { padding:12px 18px 18px; }
-  #panel-body .path { color:var(--muted); font-size:11px; word-break:break-all; margin-bottom:12px; font-family:'JetBrains Mono',monospace; }
+  #panel-body { padding:10px 18px 18px; }
   #panel-body .summary {
-    display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;
+    display:flex; align-items:center; gap:12px; margin-bottom:12px;
+    padding:7px 10px; border:1px solid rgba(42,48,64,0.68); border-radius:8px;
+    background:rgba(10,12,16,0.22);
   }
   #panel-body .summary .metric {
-    border:1px solid rgba(42,48,64,0.8); border-radius:8px; padding:7px 8px;
-    background:rgba(10,12,16,0.32);
+    display:flex; align-items:baseline; gap:5px; min-width:0;
   }
-  #panel-body .summary .num { display:block; color:var(--text); font-weight:700; font-size:14px; line-height:1.1; }
+  #panel-body .summary .num { color:var(--text); font-weight:700; font-size:13px; line-height:1; }
   #panel-body .summary .lbl { color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:0.8px; }
-  #panel-body .section { margin-top:16px; }
+  #panel-body .section { margin-top:14px; }
   #panel-body .section-title {
     font-size:10px; font-weight:600; color:var(--muted); text-transform:uppercase;
     letter-spacing:1.2px; margin-bottom:8px; display:flex; align-items:center; gap:6px;
@@ -184,6 +188,16 @@ const HTML_PAGE = `<!DOCTYPE html>
     color:var(--text-secondary); font:10px/1.45 'JetBrains Mono',monospace;
   }
   #panel-body .more-note { color:var(--muted); font-size:10px; padding:2px 1px; }
+  #panel-body .route-list { display:flex; flex-direction:column; border:1px solid rgba(42,48,64,0.7); border-radius:8px; overflow:hidden; background:rgba(10,12,16,0.24); }
+  #panel-body .route-row {
+    display:grid; grid-template-columns:minmax(88px,1.05fr) minmax(56px,0.58fr) minmax(88px,1fr) 48px;
+    align-items:center; gap:8px; padding:7px 9px; border-bottom:1px solid rgba(42,48,64,0.45);
+  }
+  #panel-body .route-row:last-child { border-bottom:0; }
+  #panel-body .route-path { color:var(--text); font:600 11px/1.35 'JetBrains Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #panel-body .route-name, #panel-body .route-component { color:var(--muted); font:10px/1.35 'JetBrains Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #panel-body .route-flags { display:flex; gap:4px; justify-content:flex-end; min-width:0; }
+  #panel-body .flag { color:var(--yellow); border:1px solid rgba(210,153,34,0.2); background:rgba(210,153,34,0.08); border-radius:999px; padding:1px 5px; font:9px/1.35 'JetBrains Mono',monospace; white-space:nowrap; }
   #panel-body .edge-item {
     display:flex; align-items:center; gap:6px; padding:5px 0; font-size:12px; border-bottom:1px solid rgba(42,48,64,0.2);
     cursor:pointer; transition:background 0.15s; border-radius:4px; padding-left:2px;
@@ -824,6 +838,8 @@ function renderPropertyValue(key, value) {
       }).join('') + '</div>';
     }
 
+    if (key === 'routes') return renderRouteList(value);
+
     var maxItems = key === 'routes' ? 10 : 6;
     var cards = value.slice(0, maxItems).map(function(item) {
       return renderObjectCard(key, item);
@@ -839,6 +855,31 @@ function renderPropertyValue(key, value) {
   }
 
   return escapeHtml(formatValue(value, 220));
+}
+
+function renderRouteList(routes) {
+  var maxItems = 18;
+  var rows = routes.slice(0, maxItems).map(function(route) {
+    var flags = [];
+    if (route.lazy) flags.push('lazy');
+    if (route.redirect) flags.push('redirect');
+    if (route.alias && route.alias.length) flags.push('alias');
+    if (route.meta && Object.keys(route.meta).length > 0) flags.push('meta');
+    if (route.guards && route.guards.length) flags.push('guard');
+    var component = route.componentPath || route.component || '';
+    var html = '<div class="route-row">';
+    html += '<span class="route-path" title="'+escapeHtml(route.fullPath || route.path || '')+'">'+escapeHtml(route.fullPath || route.path || 'unnamed')+'</span>';
+    html += '<span class="route-name" title="'+escapeHtml(route.name || '')+'">'+escapeHtml(route.name || 'no name')+'</span>';
+    html += '<span class="route-component" title="'+escapeHtml(component)+'">'+escapeHtml(shortPath(component) || 'no component')+'</span>';
+    var flagLabel = flags.length > 1 ? flags[0] + ' +' + (flags.length - 1) : flags[0] || '';
+    html += '<span class="route-flags">'+(flagLabel ? '<span class="flag" title="'+escapeHtml(flags.join(', '))+'">'+escapeHtml(flagLabel)+'</span>' : '')+'</span>';
+    html += '</div>';
+    return html;
+  }).join('');
+  if (routes.length > maxItems) {
+    rows += '<div class="more-note">+'+(routes.length - maxItems)+' more routes</div>';
+  }
+  return '<div class="route-list">'+rows+'</div>';
 }
 
 function renderObjectCard(key, value) {
@@ -901,6 +942,12 @@ function showPanel(nodeKey) {
   badge.style.background = typeColor(attrs.entityType) + '22';
   badge.style.color = typeColor(attrs.entityType);
   nameEl.textContent = attrs.label || attrs.filePath;
+  nameEl.parentElement.querySelector('.header-path')?.remove();
+  var headerPath = document.createElement('div');
+  headerPath.className = 'header-path';
+  headerPath.title = attrs.filePath || '';
+  headerPath.textContent = shortPath(attrs.filePath || '');
+  nameEl.parentElement.appendChild(headerPath);
 
   // Gather edges
   var outEdges = [];
@@ -912,22 +959,22 @@ function showPanel(nodeKey) {
   });
 
   var props = attrs._properties || {};
-  var html = '<div class="path" title="'+escapeHtml(attrs.filePath || '')+'">'+escapeHtml(shortPath(attrs.filePath || ''))+'</div>';
-  html += '<div class="summary">';
+  var html = '<div class="summary">';
   html += '<div class="metric"><span class="num">'+(attrs._degree || 0)+'</span><span class="lbl">Links</span></div>';
   html += '<div class="metric"><span class="num">'+outEdges.length+'</span><span class="lbl">Outgoing</span></div>';
   html += '<div class="metric"><span class="num">'+inEdges.length+'</span><span class="lbl">Incoming</span></div>';
   html += '</div>';
 
   // Properties
-  var propKeys = Object.keys(props).filter(function(k) { return !k.startsWith('_') && k !== 'routeTree'; });
+  var propKeys = Object.keys(props).filter(function(k) { return !k.startsWith('_') && k !== 'routeTree' && k !== 'filePath'; });
   if (propKeys.length > 0) {
     html += '<div class="section"><div class="section-title">Properties</div><div class="props">';
     for (var pi = 0; pi < propKeys.length; pi++) {
       var pk = propKeys[pi];
       var pv = props[pk];
       var complex = isComplexValue(pv);
-      html += '<div class="row '+(complex ? 'complex' : '')+'"><span class="k">'+escapeHtml(pk)+'</span><span class="v" title="'+escapeHtml(formatValue(pv, 800))+'">'+renderPropertyValue(pk, pv)+'</span></div>';
+      var titleAttr = complex ? '' : ' title="'+escapeHtml(formatValue(pv, 800))+'"';
+      html += '<div class="row '+(complex ? 'complex' : '')+'"><span class="k">'+escapeHtml(pk)+'</span><span class="v"'+titleAttr+'>'+renderPropertyValue(pk, pv)+'</span></div>';
     }
     html += '</div></div>';
   }
@@ -1195,13 +1242,13 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
       var isIn = selectedNode && tgt === selectedNode;
       var hlConn = !selectedNode && (highlightedNodes.has(src) || highlightedNodes.has(tgt));
       if (isOut) {
-        return { ...data, hidden: false, size: Math.max(0.75, (edgeWidth(data._relType) || 0.22) * 2.6), color: rgba(OUTGOING_COLOR, 0.9), zIndex: 25 };
+        return { ...data, hidden: false, size: Math.max(0.46, (edgeWidth(data._relType) || 0.22) * 1.75), color: rgba(edgeColor(data._relType), 0.62), zIndex: 25 };
       }
       if (isIn) {
-        return { ...data, hidden: false, size: Math.max(0.75, (edgeWidth(data._relType) || 0.22) * 2.6), color: rgba(INCOMING_COLOR, 0.9), zIndex: 25 };
+        return { ...data, hidden: false, size: Math.max(0.46, (edgeWidth(data._relType) || 0.22) * 1.75), color: rgba(edgeColor(data._relType), 0.58), zIndex: 25 };
       }
       if (hlConn) {
-        return { ...data, hidden: false, size: Math.max(0.58, (edgeWidth(data._relType) || 0.22) * 2), color: rgba(edgeColor(data._relType), 0.76), zIndex: 20 };
+        return { ...data, hidden: false, size: Math.max(0.42, (edgeWidth(data._relType) || 0.22) * 1.45), color: rgba(edgeColor(data._relType), 0.5), zIndex: 20 };
       }
       return { ...data, hidden: true };
     },

@@ -37,7 +37,7 @@ export async function startMCPServer(
 
   const server = new McpServer({
     name: 'code-sense',
-    version: '0.2.0',
+    version: '0.2.1',
   });
 
   // ── Resources: project metadata visible on connection ──

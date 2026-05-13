@@ -1,5 +1,3 @@
-/* eslint-disable no-useless-escape */
-
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -76,14 +74,21 @@ const HTML_PAGE = `<!DOCTYPE html>
     background:var(--surface); border-bottom:1px solid var(--border);
     backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
   }
+  #topbar .search-wrap {
+    position:relative; flex:1; max-width:360px; min-width:180px;
+  }
   #topbar input {
-    flex:1; max-width:300px; padding:5px 12px; border:1px solid var(--border);
+    width:100%; padding:5px 74px 5px 12px; border:1px solid var(--border);
     border-radius:6px; background:var(--bg); color:var(--text); font-size:12px; outline:none;
     font-family:'Inter',sans-serif; transition:border-color 0.2s, box-shadow 0.2s;
     height:30px;
   }
   #topbar input::placeholder { color:var(--muted); }
   #topbar input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(121,192,255,0.1); }
+  #topbar .match-count {
+    position:absolute; top:50%; right:10px; transform:translateY(-50%);
+    color:var(--muted); font-size:10px; font-weight:600; pointer-events:none;
+  }
   #topbar .sep { width:1px; height:18px; background:var(--border); margin:0 2px; }
   #topbar .btn {
     padding:4px 10px; border:1px solid var(--border); border-radius:6px;
@@ -97,7 +102,7 @@ const HTML_PAGE = `<!DOCTYPE html>
 
   /* Legend */
   #legend {
-    position:absolute; bottom:16px; left:16px; z-index:10;
+    position:absolute; bottom:38px; left:16px; z-index:10;
     background:rgba(18,21,27,0.92); border:1px solid var(--border); border-radius:10px;
     padding:12px 16px; max-height:50vh; overflow-y:auto;
     display:flex; flex-direction:column; gap:4px; min-width:170px;
@@ -106,7 +111,11 @@ const HTML_PAGE = `<!DOCTYPE html>
   }
   #legend .group-title { font-size:9px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; margin-top:8px; font-family:'Inter',sans-serif; }
   #legend .group-title:first-child { margin-top:0; }
-  .legend-row { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); }
+  .legend-row { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); min-height:20px; }
+  .legend-row .legend-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .legend-row .legend-count { color:var(--muted); font-size:10px; font-weight:600; }
+  .legend-filter { border-radius:6px; padding:2px 4px; margin-left:-4px; margin-right:-4px; transition:background 0.15s, opacity 0.15s; }
+  .legend-filter:hover { background:rgba(88,166,255,0.08); }
   .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; box-shadow:0 0 6px currentColor; }
   .legend-line { width:20px; height:2px; flex-shrink:0; border-radius:2px; }
 
@@ -133,6 +142,15 @@ const HTML_PAGE = `<!DOCTYPE html>
   #panel-header .close-btn:hover { color:var(--text); }
   #panel-body { padding:12px 18px 18px; }
   #panel-body .path { color:var(--muted); font-size:11px; word-break:break-all; margin-bottom:12px; font-family:'JetBrains Mono',monospace; }
+  #panel-body .summary {
+    display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;
+  }
+  #panel-body .summary .metric {
+    border:1px solid rgba(42,48,64,0.8); border-radius:8px; padding:7px 8px;
+    background:rgba(10,12,16,0.32);
+  }
+  #panel-body .summary .num { display:block; color:var(--text); font-weight:700; font-size:14px; line-height:1.1; }
+  #panel-body .summary .lbl { color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:0.8px; }
   #panel-body .section { margin-top:16px; }
   #panel-body .section-title {
     font-size:10px; font-weight:600; color:var(--muted); text-transform:uppercase;
@@ -141,9 +159,9 @@ const HTML_PAGE = `<!DOCTYPE html>
   }
   #panel-body .section-title .count { font-weight:400; color:var(--muted); }
   #panel-body .props { font-size:12px; }
-  #panel-body .props .row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(42,48,64,0.4); }
+  #panel-body .props .row { display:grid; grid-template-columns:110px 1fr; gap:12px; padding:6px 0; border-bottom:1px solid rgba(42,48,64,0.4); }
   #panel-body .props .row .k { color:var(--text-secondary); }
-  #panel-body .props .row .v { color:var(--green); font-family:'JetBrains Mono',monospace; font-size:11px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #panel-body .props .row .v { color:var(--green); font-family:'JetBrains Mono',monospace; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:normal; word-break:break-word; text-align:right; }
   #panel-body .edge-item {
     display:flex; align-items:center; gap:6px; padding:5px 0; font-size:12px; border-bottom:1px solid rgba(42,48,64,0.2);
     cursor:pointer; transition:background 0.15s; border-radius:4px; padding-left:2px;
@@ -153,6 +171,19 @@ const HTML_PAGE = `<!DOCTYPE html>
   #panel-body .edge-item .edge-label {
     flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);
     font-family:'JetBrains Mono',monospace; font-size:11px;
+  }
+  #panel-body .edge-item .edge-copy { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+  #panel-body .edge-item .edge-meta {
+    color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:10px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  #status-bar {
+    position:absolute; bottom:0; left:0; right:0; padding:6px 16px;
+    background:rgba(18,21,27,0.88); border-top:1px solid var(--border);
+    display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-secondary);
+    z-index:5; font-family:'Inter',sans-serif;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
   }
 
   /* Tooltip */
@@ -207,7 +238,10 @@ const HTML_PAGE = `<!DOCTYPE html>
 <body>
 <div id="canvas"></div>
 <div id="topbar">
-  <input id="search" placeholder="Search entities by name, path, or type..." autofocus>
+  <div class="search-wrap">
+    <input id="search" placeholder="Search entities by name, path, or type..." autofocus>
+    <span class="match-count" id="match-count"></span>
+  </div>
   <span class="sep"></span>
   <button class="btn" id="btn-reset" title="Reset view">&#x1F504; <span class="lbl">Reset</span></button>
   <button class="btn active" id="btn-edges" title="Toggle edge types">&#x1F517; <span class="lbl">Edges</span></button>
@@ -225,7 +259,7 @@ const HTML_PAGE = `<!DOCTYPE html>
 <div id="tooltip"></div>
 <div id="legend"></div>
 <div id="loading"><div class="spinner"></div><div>Loading knowledge graph...</div></div>
-<div id="status-bar" style="position:absolute;bottom:0;left:0;right:0;padding:6px 16px;background:rgba(18,21,27,0.88);border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-secondary);z-index:5;font-family:'Inter',sans-serif;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);">
+<div id="status-bar">
   <span id="status-hint">Click node to inspect &middot; Scroll to zoom &middot; Drag to pan</span>
 </div>
 
@@ -243,6 +277,8 @@ var TYPE_COLORS = {
   route: '#e3b341',
   composable: '#bc8cff',
   legacy_module: '#ff7b72',
+  'electron-main': '#f0883e',
+  preload: '#39d2c0',
   chart_component: '#e3b341',
   server_api_composable: '#56d4dd',
   mixin: '#f778ba',
@@ -256,9 +292,15 @@ var EDGE_COLORS = {
   imports: '#8b949e',
   USES_API: '#79c0ff',
   uses_store: '#56d364',
+  uses_store_item: '#7ee787',
+  uses_component: '#79c0ff',
   uses_composable: '#bc8cff',
   matches_route: '#e3b341',
+  route_to_component: '#f2cc60',
   uses_mixin: '#f778ba',
+  ipc_channel: '#39d2c0',
+  exposes_ipc: '#4db6ac',
+  calls_ipc: '#f0883e',
   has_state: '#e3b341',
   has_getter: '#56d4dd',
   has_action: '#f778ba',
@@ -270,8 +312,14 @@ var EDGE_WIDTH = {
   imports: 0.25,
   USES_API: 0.35,
   uses_store: 0.5,
+  uses_store_item: 0.55,
+  uses_component: 0.45,
   uses_composable: 0.4,
   matches_route: 0.5,
+  route_to_component: 0.55,
+  ipc_channel: 0.5,
+  exposes_ipc: 0.5,
+  calls_ipc: 0.55,
   has_state: 0.3,
   has_getter: 0.3,
   has_action: 0.3,
@@ -285,6 +333,8 @@ var NODE_SIZES = {
   route: 4,
   composable: 3.5,
   legacy_module: 5,
+  'electron-main': 4.8,
+  preload: 4.4,
   chart_component: 5,
 };
 
@@ -301,13 +351,26 @@ var edgeVisibility = {};
 var layoutRunning = false;
 
 // Helpers
+function escapeHtml(value) {
+  return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, function(ch) {
+    return {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch];
+  });
+}
+
 function typeColor(t) { return TYPE_COLORS[t] || '#6e7681'; }
 function edgeColor(t) { return EDGE_COLORS[t] || '#8b949e'; }
 function edgeWidth(t) { return EDGE_WIDTH[t] || 0.5; }
 function nodeSize(t) { return NODE_SIZES[t] || 4; }
 function shortPath(p) {
-  var parts = p.split(sep);
-  return parts.length > 3 ? '...' + sep + parts.slice(-3).join(sep) : p;
+  var pathValue = String(p || '');
+  var parts = pathValue.split(/[\\\\/]+/);
+  return parts.length > 3 ? '.../' + parts.slice(-3).join('/') : pathValue;
 }
 
 function rgba(hex, alpha) {
@@ -610,19 +673,25 @@ function renderLegend(data, edgeTypes) {
   for (var nk = 0; nk < nodeKeys.length; nk++) {
     var t = nodeKeys[nk];
     var vis = entityVisibility[t];
-    html += '<div class="legend-row legend-filter" data-entity="'+t+'" style="cursor:pointer;' + (vis ? '' : 'opacity:0.35') + '">';
+    html += '<div class="legend-row legend-filter" data-entity="'+escapeHtml(t)+'" aria-pressed="'+(vis ? 'true' : 'false')+'" title="Toggle '+escapeHtml(t)+'" style="cursor:pointer;' + (vis ? '' : 'opacity:0.35') + '">';
     html += '<span class="legend-dot" style="background:'+typeColor(t)+(vis ? '' : ';border:1px solid '+typeColor(t)+';background:transparent')+'"></span>';
-    html += '<span>'+t+' ('+nodeTypes[t]+')</span>';
+    html += '<span class="legend-name">'+escapeHtml(t)+'</span><span class="legend-count">'+nodeTypes[t]+'</span>';
     html += '</div>';
   }
 
   // Edge types
   html += '<div class="group-title">Relations</div>';
+  var edgeCounts = {};
+  for (var ei = 0; ei < data.edges.length; ei++) {
+    var relType = data.edges[ei].relType;
+    edgeCounts[relType] = (edgeCounts[relType] || 0) + 1;
+  }
   var edgeKeys = Object.keys(edgeTypes).sort();
   for (var ek = 0; ek < edgeKeys.length; ek++) {
     var et = edgeKeys[ek];
     var c = edgeColor(et);
-    html += '<div class="legend-row"><span class="legend-line" style="background:'+c+'"></span><span>'+et+'</span></div>';
+    var edgeOn = edgeVisibility[et] !== false;
+    html += '<div class="legend-row" style="'+(edgeOn ? '' : 'opacity:0.35')+'"><span class="legend-line" style="background:'+c+'"></span><span class="legend-name">'+escapeHtml(et)+'</span><span class="legend-count">'+(edgeCounts[et] || 0)+'</span></div>';
   }
   // Selection mode indicator
   html += '<div class="group-title">On Select</div>';
@@ -641,20 +710,29 @@ function renderLegend(data, edgeTypes) {
 
 function toggleEntityVisibility(entityType) {
   entityVisibility[entityType] = !entityVisibility[entityType];
-  graph.forEachNode(function(node, attrs) {
-    if (attrs.entityType === entityType) {
-      graph.setNodeAttribute(node, 'hidden', !entityVisibility[entityType]);
-      // Also hide edges connected to hidden nodes
-      graph.forEachEdge(node, function(edge) {
-        graph.setEdgeAttribute(edge, 'hidden', !entityVisibility[entityType]);
-      });
-    }
-  });
-  if (sigmaInst) sigmaInst.refresh();
-  // Redraw legend
+  applyVisibilityFilters();
+  if (selectedNode && graph.getNodeAttribute(selectedNode, 'hidden')) hidePanel();
+  var searchInput = document.getElementById('search');
+  if (searchInput && searchInput.value) filterNodes(searchInput.value);
+  else if (sigmaInst) sigmaInst.refresh();
+  renderLegend(allData, getEdgeTypesFromGraph());
+}
+
+function getEdgeTypesFromGraph() {
   var edgeTypes = {};
   graph.forEachEdge(function(edge, attrs) { edgeTypes[attrs._relType] = true; });
-  renderLegend(allData, edgeTypes);
+  return edgeTypes;
+}
+
+function applyVisibilityFilters() {
+  graph.forEachNode(function(node, attrs) {
+    graph.setNodeAttribute(node, 'hidden', entityVisibility[attrs.entityType] === false);
+  });
+  graph.forEachEdge(function(edge, attrs, src, tgt, sAttrs, tAttrs) {
+    var hiddenByType = edgeVisibility[attrs._relType] === false;
+    var hiddenByNode = entityVisibility[sAttrs.entityType] === false || entityVisibility[tAttrs.entityType] === false;
+    graph.setEdgeAttribute(edge, 'hidden', hiddenByType || hiddenByNode);
+  });
 }
 
 // ===== BUILD EDGE TOGGLE DROPDOWN =====
@@ -664,34 +742,50 @@ function buildEdgeDropdown(edgeTypes) {
   var keys = Object.keys(edgeTypes).sort();
   for (var i = 0; i < keys.length; i++) {
     var et = keys[i];
-    html += '<div class="dd-item on" data-type="'+et+'" onclick="toggleEdgeType(\\\''+et+'\\\')">';
+    html += '<div class="dd-item '+(edgeVisibility[et] === false ? '' : 'on')+'" data-type="'+escapeHtml(et)+'">';
     html += '<span class="check">&#x2713;</span>';
     html += '<span class="legend-line" style="width:14px;height:2px;background:'+edgeColor(et)+';flex-shrink:0;"></span>';
-    html += '<span>'+et+'</span>';
+    html += '<span>'+escapeHtml(et)+'</span>';
     html += '</div>';
   }
   dd.innerHTML = html;
+  dd.querySelectorAll('.dd-item').forEach(function(el) {
+    el.addEventListener('click', function() {
+      toggleEdgeType(el.getAttribute('data-type'));
+    });
+  });
 }
 
 function toggleEdgeType(et) {
   edgeVisibility[et] = !edgeVisibility[et];
-  graph.forEachEdge(function(edge, attrs) {
-    if (attrs._relType === et) {
-      graph.setEdgeAttribute(edge, 'hidden', !edgeVisibility[et]);
-    }
-  });
+  applyVisibilityFilters();
   if (sigmaInst) sigmaInst.refresh();
-  var items = document.querySelectorAll('#edge-dropdown .dd-item[data-type="'+et+'"]');
-  for (var i = 0; i < items.length; i++) {
-    items[i].classList.toggle('on', edgeVisibility[et]);
-  }
+  document.querySelectorAll('#edge-dropdown .dd-item').forEach(function(item) {
+    if (item.getAttribute('data-type') === et) item.classList.toggle('on', edgeVisibility[et]);
+  });
+  renderLegend(allData, getEdgeTypesFromGraph());
 }
 
 // ===== PANEL =====
-function formatValue(v) {
-  if (v === null || v === undefined) return '—';
-  if (typeof v === 'object') return JSON.stringify(v).substring(0, 80);
-  return String(v).substring(0, 80);
+function formatValue(v, limit) {
+  var max = limit || 120;
+  if (v === null || v === undefined) return 'n/a';
+  var text = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  if (text.length > max) return text.substring(0, max - 1) + '...';
+  return text;
+}
+
+function edgeMeta(edge) {
+  var p = edge.props || {};
+  var bits = [];
+  if (p.itemName) bits.push(p.itemName);
+  if (p.channel) bits.push('channel ' + p.channel);
+  if (p.guard) bits.push('guard ' + p.guard);
+  if (p.routePath) bits.push(p.routePath);
+  if (p.source) bits.push(p.source);
+  if (p.evidence) bits.push(p.evidence);
+  if (p.line) bits.push('line ' + p.line);
+  return bits.slice(0, 3).join(' · ');
 }
 
 function showPanel(nodeKey) {
@@ -709,13 +803,18 @@ function showPanel(nodeKey) {
   var outEdges = [];
   var inEdges = [];
   graph.forEachEdge(nodeKey, function(edge, eAttrs, src, tgt, sAttrs, tAttrs) {
-    var e = { label: eAttrs.label, source: src, target: tgt, srcLabel: sAttrs.label, tgtLabel: tAttrs.label };
+    var e = { label: eAttrs.label, source: src, target: tgt, srcLabel: sAttrs.label, tgtLabel: tAttrs.label, props: eAttrs._properties || {} };
     if (src === nodeKey) outEdges.push(e);
     else inEdges.push(e);
   });
 
   var props = attrs._properties || {};
-  var html = '<div class="path" title="'+attrs.filePath+'">'+attrs.filePath+'</div>';
+  var html = '<div class="path" title="'+escapeHtml(attrs.filePath || '')+'">'+escapeHtml(shortPath(attrs.filePath || ''))+'</div>';
+  html += '<div class="summary">';
+  html += '<div class="metric"><span class="num">'+(attrs._degree || 0)+'</span><span class="lbl">Links</span></div>';
+  html += '<div class="metric"><span class="num">'+outEdges.length+'</span><span class="lbl">Outgoing</span></div>';
+  html += '<div class="metric"><span class="num">'+inEdges.length+'</span><span class="lbl">Incoming</span></div>';
+  html += '</div>';
 
   // Properties
   var propKeys = Object.keys(props).filter(function(k) { return !k.startsWith('_'); });
@@ -724,8 +823,8 @@ function showPanel(nodeKey) {
     for (var pi = 0; pi < propKeys.length; pi++) {
       var pk = propKeys[pi];
       var pv = props[pk];
-      var displayV = Array.isArray(pv) ? pv.join(', ') : formatValue(pv);
-      html += '<div class="row"><span class="k">'+pk+'</span><span class="v" title="'+formatValue(pv)+'">'+displayV+'</span></div>';
+      var displayV = Array.isArray(pv) ? pv.map(function(item) { return formatValue(item, 60); }).join(', ') : formatValue(pv, 180);
+      html += '<div class="row"><span class="k">'+escapeHtml(pk)+'</span><span class="v" title="'+escapeHtml(formatValue(pv, 800))+'">'+escapeHtml(displayV)+'</span></div>';
     }
     html += '</div></div>';
   }
@@ -735,9 +834,12 @@ function showPanel(nodeKey) {
     html += '<div class="section"><div class="section-title">Outgoing <span class="count">('+outEdges.length+')</span></div>';
     for (var oi = 0; oi < outEdges.length; oi++) {
       var oe = outEdges[oi];
-      html += '<div class="edge-item" data-node="'+oe.target+'" onclick="navigateToNode(\\\''+oe.target+'\\\')">';
-      html += '<span class="rel-badge" style="background:'+edgeColor(oe.label)+'22;color:'+edgeColor(oe.label)+'">'+oe.label+'</span>';
-      html += '<span class="edge-label">&rarr; '+oe.tgtLabel+'</span>';
+      var oeMeta = edgeMeta(oe);
+      html += '<div class="edge-item" data-node="'+escapeHtml(oe.target)+'">';
+      html += '<span class="rel-badge" style="background:'+edgeColor(oe.label)+'22;color:'+edgeColor(oe.label)+'">'+escapeHtml(oe.label)+'</span>';
+      html += '<span class="edge-copy"><span class="edge-label">&rarr; '+escapeHtml(oe.tgtLabel || oe.target)+'</span>';
+      if (oeMeta) html += '<span class="edge-meta">'+escapeHtml(oeMeta)+'</span>';
+      html += '</span>';
       html += '</div>';
     }
     html += '</div>';
@@ -748,15 +850,23 @@ function showPanel(nodeKey) {
     html += '<div class="section"><div class="section-title">Incoming <span class="count">('+inEdges.length+')</span></div>';
     for (var ii = 0; ii < inEdges.length; ii++) {
       var ie = inEdges[ii];
-      html += '<div class="edge-item" data-node="'+ie.source+'" onclick="navigateToNode(\\\''+ie.source+'\\\')">';
-      html += '<span class="rel-badge" style="background:'+edgeColor(ie.label)+'22;color:'+edgeColor(ie.label)+'">'+ie.label+'</span>';
-      html += '<span class="edge-label">&larr; '+ie.srcLabel+'</span>';
+      var ieMeta = edgeMeta(ie);
+      html += '<div class="edge-item" data-node="'+escapeHtml(ie.source)+'">';
+      html += '<span class="rel-badge" style="background:'+edgeColor(ie.label)+'22;color:'+edgeColor(ie.label)+'">'+escapeHtml(ie.label)+'</span>';
+      html += '<span class="edge-copy"><span class="edge-label">&larr; '+escapeHtml(ie.srcLabel || ie.source)+'</span>';
+      if (ieMeta) html += '<span class="edge-meta">'+escapeHtml(ieMeta)+'</span>';
+      html += '</span>';
       html += '</div>';
     }
     html += '</div>';
   }
 
   body.innerHTML = html;
+  body.querySelectorAll('.edge-item[data-node]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      navigateToNode(el.getAttribute('data-node'));
+    });
+  });
   document.getElementById('panel').classList.add('active');
   selectedNode = nodeKey;
   applyNodeHighlight();
@@ -803,13 +913,15 @@ function filterNodes(query) {
 
   if (q) {
     graph.forEachNode(function(node, attrs) {
-      var match = attrs.label.toLowerCase().indexOf(q) >= 0 ||
-        attrs.filePath.toLowerCase().indexOf(q) >= 0 ||
-        attrs.entityType.toLowerCase().indexOf(q) >= 0;
+      if (attrs.hidden) return;
+      var match = String(attrs.label || '').toLowerCase().indexOf(q) >= 0 ||
+        String(attrs.filePath || '').toLowerCase().indexOf(q) >= 0 ||
+        String(attrs.entityType || '').toLowerCase().indexOf(q) >= 0;
       if (match) highlightedNodes.add(node);
     });
   }
 
+  document.getElementById('match-count').textContent = q ? highlightedNodes.size + ' match' + (highlightedNodes.size === 1 ? '' : 'es') : '';
   applyNodeHighlight();
   if (sigmaInst) sigmaInst.refresh();
 }
@@ -883,8 +995,8 @@ function setupHoverTooltip() {
   var tooltip = document.getElementById('tooltip');
   sigmaInst.on('enterNode', function(evt) {
     var attrs = graph.getNodeAttributes(evt.node);
-    var html = '<div class="tt-name">'+attrs.label+'</div>';
-    html += '<div class="tt-detail">'+attrs.entityType+' · '+shortPath(attrs.filePath)+'</div>';
+    var html = '<div class="tt-name">'+escapeHtml(attrs.label)+'</div>';
+    html += '<div class="tt-detail">'+escapeHtml(attrs.entityType)+' · '+escapeHtml(shortPath(attrs.filePath))+'</div>';
     tooltip.innerHTML = html;
     tooltip.style.display = 'block';
   });
@@ -896,8 +1008,8 @@ function setupHoverTooltip() {
     var attrs = graph.getEdgeAttributes(evt.edge);
     var src = graph.getNodeAttributes(evt.source);
     var tgt = graph.getNodeAttributes(evt.target);
-    var html = '<div class="tt-rel">'+attrs.label+'</div>';
-    html += '<div class="tt-detail">'+src.label+' → '+tgt.label+'</div>';
+    var html = '<div class="tt-rel">'+escapeHtml(attrs.label)+'</div>';
+    html += '<div class="tt-detail">'+escapeHtml(src.label)+' → '+escapeHtml(tgt.label)+'</div>';
     tooltip.innerHTML = html;
     tooltip.style.display = 'block';
   });
@@ -916,7 +1028,7 @@ function setupHoverTooltip() {
 
 // ===== MAIN =====
 fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
-  if (data.error) { document.getElementById('loading').innerHTML='<span style="color:#f85149">Error: '+data.error+'</span>'; return; }
+  if (data.error) { document.getElementById('loading').innerHTML='<span style="color:#f85149">Error: '+escapeHtml(data.error)+'</span>'; return; }
   if (!data.nodes || data.nodes.length === 0) {
     document.getElementById('loading').innerHTML='<span style="color:var(--muted)">No entities indexed. Run <code>code-sense index</code> first.</span>';
     return;
@@ -954,6 +1066,7 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
     nodeHoverProgramClasses: {},
     defaultDrawNodeHover: function() {},
     nodeReducer: function(node, data) {
+      if (data.hidden) return data;
       var isSel = selectedNode === node;
       var isNeighbor = selectedNode && graph && graph.neighbors(selectedNode).indexOf(node) >= 0;
       var isHL = highlightedNodes.has(node);
@@ -971,6 +1084,7 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
       return { ...data, hidden: true };
     },
     edgeReducer: function(edge, data) {
+      if (data.hidden) return data;
       if (!selectedNode && highlightedNodes.size === 0) return data;
       var src = graph ? graph.source(edge) : null;
       var tgt = graph ? graph.target(edge) : null;
@@ -1023,6 +1137,7 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
   // Button: Reset view
   document.getElementById('btn-reset').addEventListener('click', function() {
     searchInput.value = '';
+    document.getElementById('match-count').textContent = '';
     highlightedNodes = new Set();
     hidePanel();
     applyNodeHighlight();
@@ -1057,6 +1172,7 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
       hidePanel();
       edgeDD.classList.remove('show');
       document.getElementById('search').value = '';
+      document.getElementById('match-count').textContent = '';
       highlightedNodes = new Set();
       applyNodeHighlight();
       sigmaInst.refresh();
@@ -1072,7 +1188,7 @@ fetch('/api/graph').then(function(r) { return r.json(); }).then(function(data) {
   window.navigateToNode = navigateToNode;
 
 }).catch(function(err) {
-  document.getElementById('loading').innerHTML = '<span style="color:#f85149">Failed to load: '+err.message+'</span>';
+  document.getElementById('loading').innerHTML = '<span style="color:#f85149">Failed to load: '+escapeHtml(err.message)+'</span>';
   console.error(err);
 });
 

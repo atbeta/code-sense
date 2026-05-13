@@ -14,7 +14,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/opencode-cc/code-sense.git"
+    "url": "git+https://github.com/atbeta/code-sense.git"
+  },
+  "homepage": "https://github.com/atbeta/code-sense#readme",
+  "bugs": {
+    "url": "https://github.com/atbeta/code-sense/issues"
   },
   "publishConfig": {
     "access": "public"

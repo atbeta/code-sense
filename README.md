@@ -1,138 +1,71 @@
 # CodeSense
 
-Config-driven code knowledge graph engine for Vue projects. Powered by tree-sitter AST parsing, LadybugDB graph database, MCP protocol, and Sigma.js WebGL visualization.
+[中文](README.md) | [English](README.en.md)
 
-Inspired by [GitNexus](https://github.com/abhigyanpatwari/GitNexus), focused specifically on Vue framework semantics.
+面向 Vue 项目的配置驱动代码知识图谱引擎。基于 tree-sitter AST 解析、LadybugDB 图数据库、MCP 协议与 Sigma.js 可视化。
 
-## Quick Start
+灵感来自 [GitNexus](https://github.com/abhigyanpatwari/GitNexus)，并针对 Vue 语义做了增强。
+
+## 快速开始
 
 ```bash
-# Initialize config for your project
+# 初始化配置
 npx @code-sense/core init
 
-# Or answer a few questions to generate a Vue/Electron-aware config
+# 交互式初始化（包含 Vue / Electron 常见选项）
 npx @code-sense/core init --interactive
 
-# Index your codebase
+# 建立知识图谱索引
 npx @code-sense/core index
 
-# Explore the graph visually
+# 浏览图谱可视化
 npx @code-sense/core view
 
-# Or connect via MCP to AI coding agents
+# 作为 MCP 服务接入 AI 编码助手
 npx @code-sense/core serve
 ```
 
-Or install globally:
+全局安装：
 
 ```bash
 npm install -g @code-sense/core
 code-sense init
 ```
 
-## How It Works
+## 核心能力
 
-CodeSense parses your Vue project into a **knowledge graph**:
+- 将 `.vue` 组件、store、路由等实体构建为图节点
+- 将 import、store 调用、路由映射等关系构建为图边
+- 识别 Vue API 调用（如 `ref`、`computed`、`watch`）
+- 提供 MCP 工具支持影响分析、调用追踪、语义检索等
+- 提供浏览器图谱视图（Sigma.js）用于交互探索
 
-```
-┌─────────────┐     uses_store      ┌──────────┐
-│  App.vue    │ ───────────────────→ │ user.ts  │
-│  component  │ ←─── imports ────── │  store    │
-└─────────────┘                      └──────────┘
-                                           │
-                                     has_item
-                                           │
-                               ┌───────────┴───────────┐
-                               │  StoreItem: fetchUser  │
-                               │  StoreItem: isLoggedIn │
-                               └───────────────────────┘
-```
+## 命令
 
-Every `.vue` component, store file, and route definition becomes a node. Import statements, store usage, and route mappings become edges. Framework API calls (ref, computed, watch, etc.) are tracked as well.
+| 命令 | 说明 |
+| --- | --- |
+| `index` | 构建知识图谱 |
+| `view` | 启动可视化服务（默认端口 `3456`） |
+| `serve` | 启动 MCP 服务供 AI Agent 调用 |
+| `init` | 生成默认 `codesense.yaml` |
+| `init --interactive` | 生成更完整的项目配置 |
 
-## Configuration
+## MCP 工具
 
-Everything is driven by `codesense.yaml`:
+| 工具 | 用途 |
+| --- | --- |
+| `entity_context` | 获取文件/实体的完整上下文 |
+| `function_context` | 查看函数调用方、被调用方与同级函数 |
+| `impact_analysis` | 分析改动影响范围 |
+| `diff_impact` | 基于 Git diff 的影响追踪 |
+| `route_map` | 路由与组件映射 |
+| `trace_usage` | 符号使用位置与证据 |
+| `find_entrypoints` | 识别入口点（路由、页面等） |
+| `semantic_search` | 语义检索函数/代码片段 |
+| `project_overview` | 项目图谱统计总览 |
+| `cypher` | 执行原生 Cypher 调试查询 |
 
-```yaml
-project:
-  name: 'my-app'
-  source_root: 'src'
-
-entities:
-  component:
-    patterns: ['**/*.vue']
-  store:
-    patterns:
-      - 'src/store/**/*.ts'
-      - 'src/stores/**/*.ts'
-  route:
-    patterns:
-      - 'src/router/**/*.ts'
-
-framework_apis:
-  - name: 'vue'
-    sources: ['vue']
-    api_list: ['ref', 'computed', 'watch', 'onMounted', ...]
-
-relationships:
-  uses_store:
-    from: 'component'
-    to: 'store'
-    detect_by:
-      - type: 'call_expression'
-        pattern: 'use*Store' # Pinia
-      - type: 'call_expression'
-        pattern: 'mapState' # Vuex
-      - type: 'call_expression'
-        pattern: 'mapMutations'
-      - type: 'member_expression'
-        pattern: '$store.*'
-```
-
-Example configs for common scenarios:
-
-- `codesense.legacy.yaml` — Vue 2.7 + vue-demi + Vuex/Pinia mix
-- `codesense.modern.yaml` — Pure Vue 3 + Pinia + composables
-- `codesense.test.yaml` — Test fixtures with both Pinia and Vuex patterns
-
-## Commands
-
-| Command              | Description                                                                                     |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| `index`              | Build the knowledge graph                                                                       |
-| `view`               | Start visualization server (default port 3456)                                                  |
-| `serve`              | Run MCP server for AI agent integration                                                         |
-| `init`               | Scaffold a default codesense.yaml                                                               |
-| `init --interactive` | Scaffold a fuller config with Vue Router, stores, composables, mixins, and Electron IPC options |
-
-## MCP Tools
-
-| Tool               | What it answers                                                                   |
-| ------------------ | --------------------------------------------------------------------------------- |
-| `entity_context`   | "What is this file?" — full Vue-aware context, store internals, defined functions |
-| `function_context` | "Who calls this function?" — callers, callees, siblings with AST-level accuracy   |
-| `impact_analysis`  | "If I change this file, what breaks?" — bidirectional BFS traversal               |
-| `diff_impact`      | "What changed in this git diff?" — function-level change impact trace             |
-| `route_map`        | "Which URL maps to which component?"                                              |
-| `trace_usage`      | "Where is this symbol used?" — with detection evidence                            |
-| `find_entrypoints` | "What are the app entry points?" — routes, pages, project metadata                |
-| `semantic_search`  | "Find functions matching this description" — TF-IDF with code-aware tokenization  |
-| `project_overview` | Entity/edge counts, store breakdown, framework API stats                          |
-| `cypher`           | Raw Cypher query for debugging                                                    |
-
-### MCP Resources
-
-When connected, the AI agent automatically sees:
-
-| Resource         | URI                    | Content                                     |
-| ---------------- | ---------------------- | ------------------------------------------- |
-| Project metadata | `code-sense://project` | Project name, source root, entity stats     |
-| Graph schema     | `code-sense://schema`  | Entity types, relationships, framework APIs |
-
-### Configuring MCP in Claude Code / Codex
-
-Remove `-c` and `-o` flags so it auto-detects the current project:
+## MCP 配置示例（Claude Code / Codex）
 
 ```json
 {
@@ -145,70 +78,8 @@ Remove `-c` and `-o` flags so it auto-detects the current project:
 }
 ```
 
-Claude Code sets the working directory to your project root automatically. The server will find `codesense.yaml` and `.code-sense/graph/` from there.
+不要在 MCP 配置中写死绝对路径，避免多个项目误连到同一个图谱数据目录。
 
-> **Warning:** Don't hardcode absolute paths in the MCP config, or every project will connect to the same graph.
-
-## Visualization
-
-The graph viewer (`code-sense view`) renders an interactive knowledge graph in the browser:
-
-- **ForceAtlas2 layout** — adaptive physics simulation for readable graphs
-- **Node highlighting** — click a node to focus, dimming everything else
-- **Edge toggles** — show/hide edges by relationship type
-- **Search with pulse animation** — find files by name, path, or type
-- **Glass-morphism UI** — dark theme with backdrop blur panels
-- N-overlap cleanup for dense areas
-
-## Architecture
-
-```
-src/
-├── index.ts            CLI entry point (commander)
-├── config/
-│   ├── loader.ts       YAML config parsing
-│   └── defaults.ts     Default settings
-├── engine/
-│   ├── ast-traverser.ts   tree-sitter JS/TS parser
-│   ├── sfc-parser.ts      Vue SFC block splitter
-│   ├── file-scanner.ts    Glob-based file discovery
-│   └── detectors/         9 built-in AST detectors
-├── graph/
-│   ├── builder.ts      Main indexing pipeline
-│   ├── schema.ts       LadybugDB schema creation
-│   └── lbug.ts         LadybugDB wrapper
-├── mcp/
-│   ├── server.ts       MCP stdio server (7 tools)
-│   └── tools.ts        Tool implementations
-├── vis/
-│   ├── server.ts       HTTP server + inline Sigma.js app
-│   └── adapter.ts      LadybugDB → Sigma.js converter
-└── types/
-    ├── config.ts        Configuration types
-    └── graph.ts         Runtime graph types
-```
-
-## Tech Stack
-
-| Layer         | Technology                                    |
-| ------------- | --------------------------------------------- |
-| Parsing       | tree-sitter (web-tree-sitter + WASM grammars) |
-| Graph DB      | LadybugDB (embedded Cypher graph database)    |
-| Protocol      | MCP (Model Context Protocol over stdio)       |
-| Visualization | Sigma.js v3 + graphology (WebGL/Canvas)       |
-| CLI           | commander + zod validation                    |
-
-## Releasing (maintainers)
-
-Publishing to npm is automated via [`.github/workflows/release.yml`](.github/workflows/release.yml) when a **version tag** is pushed.
-
-1. Bump `version` in `package.json`, commit, and push to `main`.
-2. Create a tag whose name is `v` plus that exact version (e.g. `0.1.9` → tag `v0.1.9`). The workflow checks they match.
-3. In the GitHub repo, add a **Actions** secret `NPM_TOKEN` (npm publish token with access to `@code-sense`).
-4. Push the tag: `git push origin v0.1.9`
-
-The workflow runs `pnpm run check` then `pnpm publish`. Scoped package access is set in `publishConfig` (`access: "public"`).
-
-## License
+## 许可证
 
 MIT

@@ -20,7 +20,7 @@ import { VUE_ENTITIES, VUE_FRAMEWORK_APIS, VUE_RELATIONSHIPS } from './entities.
 export const vuePlugin: CodeSensePlugin = {
   name: 'vue',
   description: 'Vue 3 SFC and Composition API support (includes Pinia, Vue Router, Mixins)',
-  version: '0.1.0',
+  version: '0.2.0',
 
   detect(projectRoot: string): Promise<DetectionResult> | DetectionResult {
     return detectVue(projectRoot);

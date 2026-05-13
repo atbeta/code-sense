@@ -327,76 +327,80 @@ export async function routeMap(
   const pattern = params.routePattern ?? '';
   const limit = Math.min(params.limit ?? 50, 200);
 
-  let query: string;
-  if (pattern) {
-    query = `MATCH (n:Entity {entityType: 'route'})-[r]->(m:Entity) WHERE n.properties CONTAINS '${escapeStr(pattern)}' OR n.name = '${escapeStr(pattern)}' OR m.name CONTAINS '${escapeStr(pattern)}' RETURN n.filePath as routePath, n.name as routeName, n.properties as routeProps, r as rel, m.filePath as componentPath, m.name as componentName, m.properties as componentProps`;
-  } else {
-    query = `MATCH (n:Entity {entityType: 'route'})-[r]->(m:Entity) RETURN n.filePath as routePath, n.name as routeName, n.properties as routeProps, r as rel, m.filePath as componentPath, m.name as componentName, m.properties as componentProps`;
-  }
-
-  const rows = await ctx.graph.query(query);
+  const rows = await ctx.graph.query(
+    `MATCH (n:Entity {entityType: 'route'}) RETURN n.filePath as routePath, n.name as routeName, n.properties as routeProps`,
+  );
   if (rows.length === 0) {
-    return `No route-to-component mappings found${pattern ? ` matching '${pattern}'` : ''}. Ensure routes have been indexed and relationships configured.`;
+    return `No route files found${pattern ? ` matching '${pattern}'` : ''}. Ensure routes have been indexed.`;
   }
 
   const parts: string[] = ['## Route Map' + (pattern ? ` (matching "${pattern}")` : '')];
-  parts.push(
-    `Total mappings: ${rows.length}${rows.length > limit ? ` (showing first ${limit})` : ''}`,
-  );
   parts.push('');
 
-  // Group by route file
-  const byRoute = new Map<string, typeof rows>();
+  let shown = 0;
   for (const row of rows) {
     const r = row as Record<string, unknown>;
     const routePath = (r.routePath as string) || '';
-    const list = byRoute.get(routePath) ?? [];
-    list.push(row);
-    byRoute.set(routePath, list);
-  }
+    const routeProps = parseProps(r.routeProps);
+    const routes = Array.isArray(routeProps.routes)
+      ? (routeProps.routes as Array<Record<string, unknown>>)
+      : [];
+    const matchingRoutes = pattern
+      ? routes.filter((route) => routeMatchesPattern(route, pattern))
+      : routes;
+    if (matchingRoutes.length === 0 && pattern) continue;
 
-  let shown = 0;
-  for (const [routePath, entries] of byRoute) {
-    if (shown >= limit) break;
     const relRoute = relative(process.cwd(), routePath) || routePath;
     parts.push(`### \`${relRoute}\``);
 
-    for (const row of entries) {
+    for (const route of matchingRoutes) {
       if (shown >= limit) break;
       shown++;
-      const r = row as Record<string, unknown>;
-      const routeProps = parseProps(r.routeProps);
-      const rel = r.rel as Record<string, unknown> | undefined;
-      const relType = (rel?._label as string) ?? '?';
-      const compRel = relative(process.cwd(), (r.componentPath as string) || '') || '?';
-
-      // Try to match edge target to a specific route entry for path/name info
-      if (routeProps.routes && Array.isArray(routeProps.routes)) {
-        const matched = (routeProps.routes as Array<Record<string, unknown>>).find(
-          (route: Record<string, unknown>) => {
-            const comp = String(route.component ?? '');
-            const compName =
-              comp
-                .split('/')
-                .pop()
-                ?.replace(/\.[^.]+$/, '')
-                ?.toLowerCase() ?? '';
-            const edgeName = (r.componentName as string)?.toLowerCase() ?? '';
-            return compName === edgeName;
-          },
-        );
-        if (matched) {
-          parts.push(
-            `- \`${matched.path ?? '?'}\` (${matched.name ?? 'unnamed'}) → **${r.componentName ?? compRel}** \`${compRel}\``,
-          );
-          continue;
-        }
-      }
-      parts.push(`- \`${relType}\` → **${r.componentName ?? compRel}** \`${compRel}\``);
+      parts.push(formatRouteEntry(route));
     }
   }
 
+  if (shown === 0) return `No route entries found${pattern ? ` matching '${pattern}'` : ''}.`;
+
+  parts.splice(
+    1,
+    0,
+    `Total routes: ${shown}${shown >= limit ? ` (limited to first ${limit})` : ''}`,
+  );
+
   return parts.join('\n');
+}
+
+function routeMatchesPattern(route: Record<string, unknown>, pattern: string): boolean {
+  const haystack = [
+    route.path,
+    route.fullPath,
+    route.name,
+    route.component,
+    route.componentPath,
+    route.redirect,
+    ...(Array.isArray(route.alias) ? route.alias : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(pattern.toLowerCase());
+}
+
+function formatRouteEntry(route: Record<string, unknown>): string {
+  const path = String(route.fullPath ?? route.path ?? '?');
+  const name = route.name ? ` (${route.name})` : '';
+  const target = String(route.componentPath ?? route.component ?? route.redirect ?? '?');
+  const lazy = route.lazy ? ' lazy' : '';
+  const redirect = route.redirect ? ` redirect=${route.redirect}` : '';
+  const alias =
+    Array.isArray(route.alias) && route.alias.length > 0 ? ` alias=${route.alias.join(',')}` : '';
+  const meta =
+    route.meta && typeof route.meta === 'object'
+      ? ` meta=${Object.keys(route.meta as Record<string, unknown>).join(',')}`
+      : '';
+  const guards = Array.isArray(route.guards) && route.guards.length > 0 ? ' guards=yes' : '';
+  return `- \`${path}\`${name} → \`${target}\`${lazy}${redirect}${alias}${meta}${guards}`;
 }
 
 // ===== trace_usage =====
@@ -513,7 +517,8 @@ export async function findEntrypoints(ctx: ToolContext): Promise<string> {
           `- **${r.name ?? rel}** \`${rel}\` (${(props.routes as unknown[]).length} routes defined)`,
         );
         for (const route of props.routes as Array<Record<string, unknown>>) {
-          parts.push(`  - \`${route.path ?? '?'}\` → \`${route.component ?? '?'}\``);
+          const target = route.componentPath ?? route.component ?? route.redirect ?? '?';
+          parts.push(`  - \`${route.fullPath ?? route.path ?? '?'}\` → \`${target}\``);
         }
       } else {
         parts.push(`- **${r.name ?? rel}** \`${rel}\``);

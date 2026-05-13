@@ -16,6 +16,7 @@ import { parseSFC, extractScriptContent } from '../../../engine/sfc-parser.js';
 import { parseSource, collect } from '../../../engine/ast-traverser.js';
 import { extractMainIPC, extractRendererIPC, extractPreloadBridge } from './electron.js';
 import { extractTemplateComponents } from './template.js';
+import { detectRouter } from './router.js';
 import {
   detectMapHelpers,
   detectStoreItemUsage,
@@ -201,58 +202,6 @@ function detectMixins(root: SyntaxNode, props: Record<string, unknown>): void {
       }
     }
   }
-}
-
-// ── Route Detection ──
-
-function detectRouter(root: SyntaxNode, props: Record<string, unknown>): void {
-  const routeDefs = collect(
-    root,
-    (n) =>
-      n.type === 'call_expression' &&
-      (n.childForFieldName('function')?.text === 'createRouter' ||
-        n.childForFieldName('function')?.text === 'new VueRouter'),
-  );
-  if (routeDefs.length > 0) {
-    props.isRouter = true;
-  }
-  const routeEntries = extractRouteEntries(root);
-  if (routeEntries.length > 0) {
-    props.routes = routeEntries;
-  }
-}
-
-interface RouteEntry {
-  path?: string;
-  name?: string;
-  component?: string;
-}
-
-function extractRouteEntries(root: SyntaxNode): RouteEntry[] {
-  const routes: RouteEntry[] = [];
-  const arrays = collect(root, (n) => n.type === 'array');
-  for (const arr of arrays) {
-    for (const child of arr.namedChildren) {
-      if (child.type === 'object') {
-        const entry: RouteEntry = {};
-        for (const pair of child.namedChildren) {
-          if (pair.type === 'pair') {
-            const key = pair.childForFieldName('key')?.text?.replace(/^['"]|['"]$/g, '');
-            const value = pair.childForFieldName('value');
-            if (key === 'path' && value?.type === 'string') {
-              entry.path = value.text.replace(/^['"]|['"]$/g, '');
-            } else if (key === 'name' && value?.type === 'string') {
-              entry.name = value.text.replace(/^['"]|['"]$/g, '');
-            } else if (key === 'component') {
-              entry.component = value?.text;
-            }
-          }
-        }
-        if (entry.path || entry.name) routes.push(entry);
-      }
-    }
-  }
-  return routes;
 }
 
 // ── Framework API Detection ──
